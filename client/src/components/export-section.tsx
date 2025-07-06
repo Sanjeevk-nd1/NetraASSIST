@@ -1,49 +1,103 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { Download, CheckCircle } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import { Download, FileSpreadsheet, Loader2 } from "lucide-react";
 
 interface ExportSectionProps {
   jobId: number;
 }
 
 export function ExportSection({ jobId }: ExportSectionProps) {
-  const handleDownload = async () => {
-    try {
-      const response = await fetch(`/api/jobs/${jobId}/export`);
-      if (!response.ok) throw new Error("Export failed");
-      
-      const blob = await response.blob();
+  const [isExporting, setIsExporting] = useState(false);
+  const { toast } = useToast();
+
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("GET", `/api/export/${jobId}`);
+      return response.blob();
+    },
+    onSuccess: (blob) => {
+      // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `rfp_responses_${jobId}.xlsx`;
+      a.download = `rfp-responses-${jobId}-${new Date().toISOString().split('T')[0]}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (error) {
-      console.error("Export failed:", error);
-    }
+      
+      setIsExporting(false);
+      toast({
+        title: "Export Complete",
+        description: "Your responses have been downloaded successfully.",
+      });
+    },
+    onError: (error: any) => {
+      setIsExporting(false);
+      toast({
+        title: "Export Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleExport = () => {
+    setIsExporting(true);
+    exportMutation.mutate();
   };
 
   return (
-    <Card className="mt-8">
-      <CardContent className="p-6">
-        <div className="bg-gradient-to-r from-success to-green-600 rounded-xl p-6 text-white text-center">
-          <div className="mb-4">
-            <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-3">
-              <CheckCircle className="h-8 w-8" />
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center space-x-2">
+          <FileSpreadsheet className="h-5 w-5" />
+          <span>Export Results</span>
+        </CardTitle>
+        <CardDescription>
+          Download your approved responses as an Excel file
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center space-x-2 mb-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-sm font-medium text-green-800">Ready for Export</span>
             </div>
-            <h3 className="text-xl font-semibold mb-2">All Questions Processed!</h3>
-            <p className="text-white text-opacity-90">Your RFP responses are ready for download</p>
+            <p className="text-sm text-green-700">
+              All questions have been reviewed and approved. You can now download the final Excel file with your responses.
+            </p>
           </div>
+
           <Button
-            onClick={handleDownload}
-            className="bg-white text-success hover:bg-gray-50"
+            onClick={handleExport}
+            disabled={isExporting || exportMutation.isPending}
+            className="w-full bg-success hover:bg-success/90 text-white"
+            size="lg"
           >
-            <Download className="h-4 w-4 mr-2" />
-            Download Final Responses
+            {isExporting || exportMutation.isPending ? (
+              <>
+                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                Generating Excel File...
+              </>
+            ) : (
+              <>
+                <Download className="h-5 w-5 mr-2" />
+                Download Excel File
+              </>
+            )}
           </Button>
+
+          <div className="text-center">
+            <p className="text-xs text-gray-500">
+              The file will include all questions and approved answers with formatting
+            </p>
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -1,14 +1,13 @@
-import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { ProcessingJob } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import type { ProcessingJob } from "@shared/schema";
 
 export function useFileProcessing(jobId: number | null) {
-  const [pollingInterval, setPollingInterval] = useState<number | false>(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // Fetch processing job
   const { data: job, isLoading } = useQuery({
     queryKey: ["/api/jobs", jobId],
     queryFn: async () => {
@@ -17,31 +16,36 @@ export function useFileProcessing(jobId: number | null) {
       return response.json() as Promise<ProcessingJob>;
     },
     enabled: !!jobId,
-    refetchInterval: pollingInterval,
+    refetchInterval: (data) => {
+      // Refetch every 2 seconds if still processing
+      return data?.status === "processing" ? 2000 : false;
+    },
   });
 
+  // Generate answers mutation
   const generateAnswersMutation = useMutation({
     mutationFn: async () => {
       if (!jobId) throw new Error("No job ID");
-      const response = await apiRequest("POST", `/api/jobs/${jobId}/generate`);
+      const response = await apiRequest("POST", `/api/jobs/${jobId}/process`);
       return response.json();
     },
     onSuccess: () => {
-      setPollingInterval(1000); // Start polling every second
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs", jobId] });
       toast({
         title: "Processing Started",
-        description: "Generating AI-powered answers...",
+        description: "AI is generating responses for your questions.",
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({
-        title: "Generation Failed",
+        title: "Processing Failed",
         description: error.message,
         variant: "destructive",
       });
     },
   });
 
+  // Accept answer mutation
   const acceptAnswerMutation = useMutation({
     mutationFn: async (questionId: string) => {
       if (!jobId) throw new Error("No job ID");
@@ -54,10 +58,10 @@ export function useFileProcessing(jobId: number | null) {
       queryClient.invalidateQueries({ queryKey: ["/api/jobs", jobId] });
       toast({
         title: "Answer Accepted",
-        description: "Answer has been accepted successfully",
+        description: "The answer has been approved and added to your final responses.",
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({
         title: "Accept Failed",
         description: error.message,
@@ -66,6 +70,7 @@ export function useFileProcessing(jobId: number | null) {
     },
   });
 
+  // Regenerate answer mutation
   const regenerateAnswerMutation = useMutation({
     mutationFn: async (questionId: string) => {
       if (!jobId) throw new Error("No job ID");
@@ -77,48 +82,25 @@ export function useFileProcessing(jobId: number | null) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/jobs", jobId] });
       toast({
-        title: "Answer Regenerated",
-        description: "New answer has been generated",
+        title: "Regenerating Answer",
+        description: "AI is generating a new response for this question.",
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({
-        title: "Regeneration Failed",
+        title: "Regenerate Failed",
         description: error.message,
         variant: "destructive",
       });
     },
   });
 
-  // Stop polling when job is completed
-  useEffect(() => {
-    if (job?.status === "completed") {
-      setPollingInterval(false);
-    }
-  }, [job?.status]);
-
-  // Auto-scroll to next unaccepted question
-  useEffect(() => {
-    if (job?.questions && job.status === "completed") {
-      const firstUnaccepted = job.questions.find(q => !q.accepted);
-      if (firstUnaccepted) {
-        // Scroll to the first unaccepted question
-        setTimeout(() => {
-          const element = document.querySelector(`[data-question-id="${firstUnaccepted.id}"]`);
-          if (element) {
-            element.scrollIntoView({ behavior: "smooth", block: "center" });
-          }
-        }, 500);
-      }
-    }
-  }, [job?.questions, job?.status]);
-
   return {
     job,
     isLoading,
     generateAnswers: generateAnswersMutation.mutate,
+    isGenerating: generateAnswersMutation.isPending,
     acceptAnswer: acceptAnswerMutation.mutate,
     regenerateAnswer: regenerateAnswerMutation.mutate,
-    isGenerating: generateAnswersMutation.isPending || pollingInterval !== false,
   };
 }
