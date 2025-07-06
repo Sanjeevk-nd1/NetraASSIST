@@ -105,12 +105,10 @@ export const processQuestionsSchema = z.object({
 });
 
 export const acceptAnswerSchema = z.object({
-  jobId: z.number(),
   questionId: z.string(),
 });
 
 export const regenerateAnswerSchema = z.object({
-  jobId: z.number(),
   questionId: z.string(),
 });
 
