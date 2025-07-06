@@ -26,7 +26,7 @@ export function useFileProcessing(jobId: number | null) {
   const generateAnswersMutation = useMutation({
     mutationFn: async () => {
       if (!jobId) throw new Error("No job ID");
-      const response = await apiRequest("POST", `/api/jobs/${jobId}/process`);
+      const response = await apiRequest("POST", `/api/jobs/${jobId}/generate`);
       return response.json();
     },
     onSuccess: () => {
