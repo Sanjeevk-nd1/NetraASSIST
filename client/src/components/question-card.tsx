@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Question } from "@shared/schema";
-import { Check, RotateCcw, ChevronDown, ChevronUp, Loader2, FileText } from "lucide-react";
+import { Check, RotateCcw, ChevronDown, ChevronUp, Loader2, FileText, Eye } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 
 interface QuestionCardProps {
   question: Question;
@@ -15,6 +16,8 @@ interface QuestionCardProps {
 
 export function QuestionCard({ question, questionNumber, onAccept, onRegenerate }: QuestionCardProps) {
   const [isOpen, setIsOpen] = useState(!question.accepted);
+  const [showSources, setShowSources] = useState(false);
+  const { user } = useAuth();
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -88,22 +91,38 @@ export function QuestionCard({ question, questionNumber, onAccept, onRegenerate 
               <div className="bg-blue-50 rounded-lg p-4 mb-4">
                 <p className="text-gray-700 leading-relaxed">{question.answer}</p>
                 
-                {/* Sources */}
-                {question.sources && question.sources.length > 0 && (
+                {/* Sources - Admin Only */}
+                {user?.role === "admin" && question.sources && question.sources.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-blue-200">
-                    <div className="flex items-center space-x-1 mb-2">
-                      <FileText className="h-4 w-4 text-blue-600" />
-                      <span className="text-sm font-medium text-blue-600">Sources:</span>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-1">
+                        <FileText className="h-4 w-4 text-blue-600" />
+                        <span className="text-sm font-medium text-blue-600">Sources:</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowSources(!showSources)}
+                        className="text-blue-600 hover:text-blue-700 h-6 px-2"
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        <span className="text-xs">
+                          {showSources ? "Hide" : "View"} Sources
+                        </span>
+                      </Button>
                     </div>
-                    <div className="space-y-2">
-                      {question.sources.map((source, idx) => (
-                        <div key={idx} className="bg-white border border-blue-200 rounded p-2">
-                          <p className="text-xs text-gray-600 leading-relaxed">
-                            {source}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
+                    
+                    {showSources && (
+                      <div className="space-y-2">
+                        {question.sources.map((source, idx) => (
+                          <div key={idx} className="bg-white border border-blue-200 rounded p-2">
+                            <p className="text-xs text-gray-600 leading-relaxed">
+                              {source}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -16,7 +16,16 @@ export function ExportSection({ jobId }: ExportSectionProps) {
 
   const exportMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("GET", `/api/export/${jobId}`);
+      const response = await fetch(`/api/jobs/${jobId}/export`, {
+        method: "GET",
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Export failed");
+      }
+      
       return response.blob();
     },
     onSuccess: (blob) => {

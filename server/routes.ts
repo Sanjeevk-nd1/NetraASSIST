@@ -8,6 +8,7 @@ import multer from "multer";
 import bcrypt from "bcrypt";
 import path from "path";
 import fs from "fs";
+import * as XLSX from "xlsx";
 import { 
   fileUploadSchema, 
   acceptAnswerSchema, 
@@ -352,13 +353,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         Sources: q.sources?.join("; ") || "",
       }));
 
-      res.setHeader("Content-Type", "application/json");
-      res.setHeader("Content-Disposition", `attachment; filename="rfp_responses_${job.id}.json"`);
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
       
-      res.json(excelData);
+      // Auto-adjust column widths
+      const colWidths = [
+        { wch: 50 }, // Question column
+        { wch: 80 }, // Answer column
+        { wch: 30 }, // Sources column
+      ];
+      ws['!cols'] = colWidths;
+      
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(wb, ws, "RFP Responses");
+      
+      // Generate Excel buffer
+      const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="rfp_responses_${job.id}.xlsx"`);
+      
+      res.send(excelBuffer);
     } catch (error) {
       console.error("Export error:", error);
       res.status(500).json({ error: "Failed to export results" });
+    }
+  });
+
+  // Export chat history
+  app.get("/api/chat/export", authenticateUser, async (req, res) => {
+    try {
+      const chatHistory = await storage.getUserChatMessages(req.user!.id);
+      
+      if (!chatHistory || chatHistory.length === 0) {
+        return res.status(404).json({ error: "No chat history found" });
+      }
+
+      // Generate Excel file for chat history
+      const excelData = chatHistory.map(chat => ({
+        Question: chat.message,
+        Response: chat.response,
+        Sources: chat.sources?.join("; ") || "",
+        Date: chat.createdAt ? new Date(chat.createdAt).toLocaleString() : "",
+      }));
+
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      
+      // Auto-adjust column widths
+      const colWidths = [
+        { wch: 40 }, // Question column
+        { wch: 80 }, // Response column
+        { wch: 30 }, // Sources column
+        { wch: 20 }, // Date column
+      ];
+      ws['!cols'] = colWidths;
+      
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(wb, ws, "Chat History");
+      
+      // Generate Excel buffer
+      const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="chat_history_${req.user!.id}.xlsx"`);
+      
+      res.send(excelBuffer);
+    } catch (error) {
+      console.error("Export chat history error:", error);
+      res.status(500).json({ error: "Failed to export chat history" });
     }
   });
 

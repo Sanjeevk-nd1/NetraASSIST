@@ -79,8 +79,8 @@ export function ChatBot() {
     },
   });
 
-  // Download chat history
-  const downloadChatHistory = () => {
+  // Download chat history as Excel
+  const downloadChatHistory = async () => {
     if (chatHistory.length === 0) {
       toast({
         title: "No Chat History",
@@ -90,24 +90,38 @@ export function ChatBot() {
       return;
     }
 
-    const chatData = chatHistory.map(msg => ({
-      timestamp: new Date(msg.createdAt!).toLocaleString(),
-      message: msg.message,
-      response: msg.response,
-      sources: msg.sources || [],
-    }));
-
-    const blob = new Blob([JSON.stringify(chatData, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `chat-history-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+    try {
+      const response = await fetch("/api/chat/export", {
+        method: "GET",
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Export failed");
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `chat_history_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({
+        title: "Export Complete",
+        description: "Your chat history has been downloaded as Excel file.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Export Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {

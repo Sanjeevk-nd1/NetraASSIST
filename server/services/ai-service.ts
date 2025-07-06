@@ -17,18 +17,17 @@ export class AIService {
   async generateAnswer(question: string, context: string = ""): Promise<{ answer: string; sources: string[] }> {
     this.checkApiKey();
     
-    // If no context is provided, use general business knowledge
-    const prompt = context.trim() ? `
-You are an expert business consultant specializing in RFP responses. Answer the question based on the provided context.
-Your response should be professional, detailed, and directly address the question asked.
-Provide specific, actionable information that would be valuable in a business proposal.
+    // Use the updated prompt for better responses
+    const prompt = `
+You are an expert in compliance and policy enforcement in Netradyne. Answer the question strictly based on the knowledge in the provided documents. 
+Your response should be clear, authoritative, and focused solely on providing the most relevant and accurate answer.
+Avoid mentioning the documents, sections, or any sources. Do not include the question or any prefixes in your response. Just provide the answer.
+If the context does not contain relevant information, respond with: "I'm sorry, I don't have enough information to answer this question"
+If the answer to the question is a direct "YES" or "NO," provide a concise explanation of the reason for that answer, based on the context.
+For all other cases, provide a detailed and accurate response based on the context.
+Please ensure your response is comprehensive, user-friendly, and professionally formatted for business use.
 
 Context: ${context}
-
-Question: ${question}
-` : `
-You are an expert business consultant specializing in RFP responses. Provide a professional, comprehensive answer to this RFP question.
-Your response should be detailed, practical, and demonstrate business expertise. Include relevant considerations, best practices, and actionable information.
 
 Question: ${question}
 `;
@@ -84,8 +83,14 @@ Question: ${question}
     
     const processedQuestions: Question[] = [];
     
-    for (const question of questions) {
+    for (let i = 0; i < questions.length; i++) {
+      const question = questions[i];
       try {
+        // Add delay between requests to avoid rate limiting
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+        }
+        
         const result = await this.generateAnswer(question.text, context);
         processedQuestions.push({
           ...question,
@@ -94,10 +99,11 @@ Question: ${question}
           status: "completed",
         });
       } catch (error) {
+        console.error(`Error processing question ${i + 1}:`, error);
         processedQuestions.push({
           ...question,
           status: "failed",
-          answer: "Error generating answer",
+          answer: "Error generating answer - please try regenerating this question",
           sources: [],
         });
       }
