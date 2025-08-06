@@ -82,7 +82,7 @@ export default function AuthPage() {
                 <FileText className="h-8 w-8" />
               </div>
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">RFP Automated</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">NetraASSIST</h1>
             <p className="text-gray-600">AI-powered document processing and response generation</p>
           </div>
 

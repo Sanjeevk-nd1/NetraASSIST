@@ -197,7 +197,7 @@ export function FileUpload({ onFileUploaded }: FileUploadProps) {
           <h3 className="font-medium text-blue-900 mb-2">File Requirements</h3>
           <ul className="text-sm text-blue-700 space-y-1">
             <li>• Maximum file size: 10MB</li>
-            <li>• Excel: Questions should be in the first column</li>
+            <li>• Excel: There must be a column named "Question"</li>
             <li>• PDF: Questions will be extracted automatically</li>
             <li>• Ensure questions are clearly formatted</li>
           </ul>

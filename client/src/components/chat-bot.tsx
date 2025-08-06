@@ -173,7 +173,7 @@ export function ChatBot() {
         </p>
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col p-0">
+      <CardContent className="flex-1 flex flex-col p-0 overflow-y-auto">
         {/* Chat Messages */}
         <ScrollArea className="flex-1 px-4">
           {isLoading ? (

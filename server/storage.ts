@@ -1,248 +1,210 @@
-import { 
-  users, 
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import {
+  users,
   documents,
-  processingJobs, 
+  processingJobs,
   chatMessages,
-  type User, 
-  type InsertUser, 
+  type User,
+  type InsertUser,
   type Document,
   type InsertDocument,
-  type ProcessingJob, 
+  type ProcessingJob,
   type InsertProcessingJob,
   type ChatMessage,
   type InsertChatMessage,
-  type Question
+  type Question,
 } from "@shared/schema";
+import { eq } from "drizzle-orm";
+
+import dotenv from "dotenv";
+
+// Load environment variables
+dotenv.config();
+
+const { Client } = pg;
 
 export interface IStorage {
-  // User management
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
   deleteUser(id: number): Promise<boolean>;
-  
-  // Document management
   createDocument(document: InsertDocument): Promise<Document>;
   getDocument(id: number): Promise<Document | undefined>;
   getAllDocuments(): Promise<Document[]>;
   deleteDocument(id: number): Promise<boolean>;
-  
-  // Processing jobs
   createProcessingJob(job: InsertProcessingJob): Promise<ProcessingJob>;
   getProcessingJob(id: number): Promise<ProcessingJob | undefined>;
   getUserProcessingJobs(userId: number): Promise<ProcessingJob[]>;
   updateProcessingJob(id: number, updates: Partial<ProcessingJob>): Promise<ProcessingJob | undefined>;
   deleteProcessingJob(id: number): Promise<boolean>;
-  
-  // Questions
   updateQuestions(jobId: number, questions: Question[]): Promise<boolean>;
   updateQuestionAnswer(jobId: number, questionId: string, answer: string): Promise<boolean>;
   acceptQuestion(jobId: number, questionId: string): Promise<boolean>;
-  
-  // Chat messages
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
   getUserChatMessages(userId: number): Promise<ChatMessage[]>;
   deleteChatMessage(id: number): Promise<boolean>;
   clearUserChatHistory(userId: number): Promise<boolean>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private documents: Map<number, Document>;
-  private processingJobs: Map<number, ProcessingJob>;
-  private chatMessages: Map<number, ChatMessage>;
-  currentUserId: number;
-  currentDocumentId: number;
-  currentJobId: number;
-  currentChatId: number;
+export class PostgresStorage implements IStorage {
+  private db: ReturnType<typeof drizzle>;
 
   constructor() {
-    this.users = new Map();
-    this.documents = new Map();
-    this.processingJobs = new Map();
-    this.chatMessages = new Map();
-    this.currentUserId = 1;
-    this.currentDocumentId = 1;
-    this.currentJobId = 1;
-    this.currentChatId = 1;
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      console.error("Error: DATABASE_URL is not set in .env");
+      throw new Error("DATABASE_URL is required");
+    }
+    console.log("Storage connecting to:", connectionString);
+    const client = new Client({ connectionString });
+    client.on("error", (err: Error) => {
+      console.error("PostgreSQL client error:", err.message);
+    });
+    this.db = drizzle(client, { schema: { users, documents, processingJobs, chatMessages } });
+    client.connect().catch(err => {
+      console.error("Failed to connect to PostgreSQL in storage.ts:", err.message);
+      throw err;
+    });
   }
 
-  // User management
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const result = await this.db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const result = await this.db.select().from(users).where(eq(users.username, username)).limit(1);
+    return result[0];
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.email === email,
-    );
+    const result = await this.db.select().from(users).where(eq(users.email, email)).limit(1);
+    return result[0];
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const now = new Date();
-    const user: User = { 
-      ...insertUser, 
-      id, 
-      role: insertUser.role || "user",
-      createdAt: now 
-    };
-    this.users.set(id, user);
-    return user;
+  async createUser(user: InsertUser): Promise<User> {
+    const [newUser] = await this.db.insert(users).values(user).returning();
+    return newUser;
   }
 
   async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values());
+    return this.db.select().from(users);
   }
 
   async deleteUser(id: number): Promise<boolean> {
-    return this.users.delete(id);
+    const result = await this.db.delete(users).where(eq(users.id, id)).returning();
+    return result.length > 0;
   }
 
-  // Document management
   async createDocument(document: InsertDocument): Promise<Document> {
-    const id = this.currentDocumentId++;
-    const now = new Date();
-    const doc: Document = { 
-      ...document, 
-      id, 
-      uploadedBy: document.uploadedBy || null,
-      createdAt: now 
-    };
-    this.documents.set(id, doc);
-    return doc;
+    const [newDocument] = await this.db.insert(documents).values(document).returning();
+    return newDocument;
   }
 
   async getDocument(id: number): Promise<Document | undefined> {
-    return this.documents.get(id);
+    const result = await this.db.select().from(documents).where(eq(documents.id, id)).limit(1);
+    return result[0];
   }
 
   async getAllDocuments(): Promise<Document[]> {
-    return Array.from(this.documents.values());
+    return this.db.select().from(documents);
   }
 
   async deleteDocument(id: number): Promise<boolean> {
-    return this.documents.delete(id);
+    const result = await this.db.delete(documents).where(eq(documents.id, id)).returning();
+    return result.length > 0;
   }
 
-  // Processing jobs
   async createProcessingJob(job: InsertProcessingJob): Promise<ProcessingJob> {
-    const id = this.currentJobId++;
-    const now = new Date();
-    const processingJob: ProcessingJob = { 
-      ...job, 
-      id, 
-      status: job.status || "pending",
-      questions: job.questions || null,
-      createdAt: now,
-      updatedAt: now
-    };
-    this.processingJobs.set(id, processingJob);
-    return processingJob;
+    const [newJob] = await this.db.insert(processingJobs).values(job).returning();
+    return newJob;
   }
 
   async getProcessingJob(id: number): Promise<ProcessingJob | undefined> {
-    return this.processingJobs.get(id);
+    const result = await this.db.select().from(processingJobs).where(eq(processingJobs.id, id)).limit(1);
+    return result[0];
   }
 
   async getUserProcessingJobs(userId: number): Promise<ProcessingJob[]> {
-    return Array.from(this.processingJobs.values()).filter(
-      (job) => job.userId === userId
-    );
+    return this.db.select().from(processingJobs).where(eq(processingJobs.userId, userId));
   }
 
   async updateProcessingJob(id: number, updates: Partial<ProcessingJob>): Promise<ProcessingJob | undefined> {
-    const job = this.processingJobs.get(id);
-    if (!job) return undefined;
-    
-    const updatedJob = { ...job, ...updates, updatedAt: new Date() };
-    this.processingJobs.set(id, updatedJob);
+    const [updatedJob] = await this.db
+      .update(processingJobs)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(processingJobs.id, id))
+      .returning();
     return updatedJob;
   }
 
   async deleteProcessingJob(id: number): Promise<boolean> {
-    return this.processingJobs.delete(id);
+    const result = await this.db.delete(processingJobs).where(eq(processingJobs.id, id)).returning();
+    return result.length > 0;
   }
 
-  // Questions
   async updateQuestions(jobId: number, questions: Question[]): Promise<boolean> {
-    const job = this.processingJobs.get(jobId);
-    if (!job) return false;
-    
-    const updatedJob = { ...job, questions, updatedAt: new Date() };
-    this.processingJobs.set(jobId, updatedJob);
-    return true;
+    const result = await this.db
+      .update(processingJobs)
+      .set({ questions, updatedAt: new Date() })
+      .where(eq(processingJobs.id, jobId))
+      .returning();
+    return result.length > 0;
   }
 
   async updateQuestionAnswer(jobId: number, questionId: string, answer: string): Promise<boolean> {
-    const job = this.processingJobs.get(jobId);
+    const job = await this.getProcessingJob(jobId);
     if (!job || !job.questions) return false;
-    
-    const updatedQuestions = job.questions.map(q => 
+
+    const updatedQuestions = job.questions.map(q =>
       q.id === questionId ? { ...q, answer, status: "completed" as const } : q
     );
-    
-    const updatedJob = { ...job, questions: updatedQuestions, updatedAt: new Date() };
-    this.processingJobs.set(jobId, updatedJob);
-    return true;
+
+    const result = await this.db
+      .update(processingJobs)
+      .set({ questions: updatedQuestions, updatedAt: new Date() })
+      .where(eq(processingJobs.id, jobId))
+      .returning();
+    return result.length > 0;
   }
 
   async acceptQuestion(jobId: number, questionId: string): Promise<boolean> {
-    const job = this.processingJobs.get(jobId);
+    const job = await this.getProcessingJob(jobId);
     if (!job || !job.questions) return false;
-    
-    const updatedQuestions = job.questions.map(q => 
+
+    const updatedQuestions = job.questions.map(q =>
       q.id === questionId ? { ...q, accepted: true } : q
     );
-    
-    const updatedJob = { ...job, questions: updatedQuestions, updatedAt: new Date() };
-    this.processingJobs.set(jobId, updatedJob);
-    return true;
+
+    const result = await this.db
+      .update(processingJobs)
+      .set({ questions: updatedQuestions, updatedAt: new Date() })
+      .where(eq(processingJobs.id, jobId))
+      .returning();
+    return result.length > 0;
   }
 
-  // Chat messages
   async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
-    const id = this.currentChatId++;
-    const now = new Date();
-    const chatMessage: ChatMessage = { 
-      ...message, 
-      id, 
-      sources: message.sources || null,
-      createdAt: now 
-    };
-    this.chatMessages.set(id, chatMessage);
-    return chatMessage;
+    const [newMessage] = await this.db.insert(chatMessages).values(message).returning();
+    return newMessage;
   }
 
   async getUserChatMessages(userId: number): Promise<ChatMessage[]> {
-    return Array.from(this.chatMessages.values()).filter(
-      (msg) => msg.userId === userId
-    );
+    return this.db.select().from(chatMessages).where(eq(chatMessages.userId, userId));
   }
 
   async deleteChatMessage(id: number): Promise<boolean> {
-    return this.chatMessages.delete(id);
+    const result = await this.db.delete(chatMessages).where(eq(chatMessages.id, id)).returning();
+    return result.length > 0;
   }
 
   async clearUserChatHistory(userId: number): Promise<boolean> {
-    const userMessages = Array.from(this.chatMessages.entries()).filter(
-      ([_, msg]) => msg.userId === userId
-    );
-    
-    userMessages.forEach(([id, _]) => {
-      this.chatMessages.delete(id);
-    });
-    
-    return true;
+    const result = await this.db.delete(chatMessages).where(eq(chatMessages.userId, userId)).returning();
+    return result.length > 0;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new PostgresStorage();

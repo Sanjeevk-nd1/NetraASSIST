@@ -59,7 +59,7 @@ export default function Dashboard() {
               <div className="bg-primary text-white rounded-lg p-2">
                 <FileText className="h-6 w-6" />
               </div>
-              <h1 className="text-xl font-semibold text-gray-900">RFP Automated</h1>
+              <h1 className="text-xl font-semibold text-gray-900">NetraASSIST</h1>
             </div>
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2 text-sm text-gray-600">
