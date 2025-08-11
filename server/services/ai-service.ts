@@ -6,22 +6,22 @@ dotenv.config();
 
 export class AIService {
   private groqApiKey: string;
-  private baseUrl = "https://api.groq.com/openai/v1/chat/completions";
+  private baseUrl = "https://api.openai.com/v1/chat/completions"; // openAPI URL
   private maxRetries = 3;
   private retryDelayMs = 3000;
   private maxContextLength = 4000;
 
   constructor() {
-    this.groqApiKey = process.env.GROQ_API_KEY || "";
+    this.groqApiKey = process.env.OPENAI_API_KEY || ""; // openAPI env var name
     if (!this.groqApiKey) {
-      console.error("GROQ_API_KEY environment variable is missing");
-      throw new Error("GROQ_API_KEY is required");
+      console.error("OPENAI_API_KEY environment variable is missing");
+      throw new Error("OPENAI_API_KEY is required");
     }
   }
 
   private checkApiKey() {
     if (!this.groqApiKey) {
-      throw new Error("GROQ_API_KEY environment variable is required");
+      throw new Error("OPENAI_API_KEY environment variable is required");
     }
   }
 
