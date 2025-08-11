@@ -65,7 +65,7 @@ Input: ${question}
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "llama-3.1-8b-instant",
+            model: "gpt-4o-mini",
             messages: [{ role: "user", content: prompt }],
             max_tokens: 500,
             temperature: 0.7,
