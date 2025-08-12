@@ -5,23 +5,42 @@ import { storage } from "../storage";
 dotenv.config();
 
 export class AIService {
-  private groqApiKey: string;
-  private baseUrl = "https://api.openai.com/v1/chat/completions"; // openAPI URL
+  private azureApiKey: string;
+  private baseUrl: string;
   private maxRetries = 3;
   private retryDelayMs = 3000;
   private maxContextLength = 4000;
 
   constructor() {
-    this.groqApiKey = process.env.OPENAI_API_KEY || ""; // openAPI env var name
-    if (!this.groqApiKey) {
-      console.error("OPENAI_API_KEY environment variable is missing");
-      throw new Error("OPENAI_API_KEY is required");
+    this.azureApiKey = process.env.AZURE_OPENAI_API_KEY || "";
+    const instanceName = process.env.AZURE_OPENAI_API_INSTANCE_NAME;
+    const deploymentName = process.env.AZURE_OPENAI_API_DEPLOYMENT_NAME;
+    const apiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-02-15-preview"; // Fallback to a stable version if not specified
+
+    if (!this.azureApiKey) {
+      console.error("AZURE_OPENAI_API_KEY environment variable is missing");
+      throw new Error("AZURE_OPENAI_API_KEY is required");
+    }
+    if (!instanceName) {
+      console.error("AZURE_OPENAI_API_INSTANCE_NAME environment variable is missing");
+      throw new Error("AZURE_OPENAI_API_INSTANCE_NAME is required");
+    }
+    if (!deploymentName) {
+      console.error("AZURE_OPENAI_API_DEPLOYMENT_NAME environment variable is missing");
+      throw new Error("AZURE_OPENAI_API_DEPLOYMENT_NAME is required");
+    }
+
+    this.baseUrl = `https://${instanceName}.openai.azure.com/openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
+
+    if (!this.baseUrl.includes("openai.azure.com")) {
+      console.error("Invalid Azure OpenAI endpoint configuration");
+      throw new Error("Valid AZURE_OPENAI_API_INSTANCE_NAME and AZURE_OPENAI_API_DEPLOYMENT_NAME are required");
     }
   }
 
   private checkApiKey() {
-    if (!this.groqApiKey) {
-      throw new Error("OPENAI_API_KEY environment variable is required");
+    if (!this.azureApiKey) {
+      throw new Error("AZURE_OPENAI_API_KEY environment variable is required");
     }
   }
 
@@ -61,11 +80,10 @@ Input: ${question}
         const response = await fetch(this.baseUrl, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${this.groqApiKey}`,
+            "api-key": `${this.azureApiKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-4o-mini",
             messages: [{ role: "user", content: prompt }],
             max_tokens: 500,
             temperature: 0.7,
@@ -80,7 +98,7 @@ Input: ${question}
             await new Promise(resolve => setTimeout(resolve, this.retryDelayMs * attempt));
             continue;
           }
-          throw new Error(`Groq API error: ${response.status} ${response.statusText}`);
+          throw new Error(`Azure OpenAI API error: ${response.status} ${response.statusText}`);
         }
 
         const data = await response.json();
