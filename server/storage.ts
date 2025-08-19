@@ -47,6 +47,8 @@ export interface IStorage {
   getUserChatMessages(userId: number): Promise<ChatMessage[]>;
   deleteChatMessage(id: number): Promise<boolean>;
   clearUserChatHistory(userId: number): Promise<boolean>;
+    updateUserRole(userId: number, role: "user" | "admin"): Promise<User | undefined>;
+
 }
 
 export class PostgresStorage implements IStorage {
@@ -98,6 +100,16 @@ export class PostgresStorage implements IStorage {
     const result = await this.db.delete(users).where(eq(users.id, id)).returning();
     return result.length > 0;
   }
+
+    async updateUserRole(userId: number, role: "user" | "admin"): Promise<User | undefined> {
+    const [updatedUser] = await this.db
+      .update(users)
+      .set({ role })
+      .where(eq(users.id, userId))
+      .returning();
+    return updatedUser;
+  }
+
 
   async createDocument(document: InsertDocument): Promise<Document> {
     const [newDocument] = await this.db.insert(documents).values(document).returning();

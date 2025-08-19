@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { AIService } from "./services/ai-service";
@@ -22,7 +22,13 @@ const upload = multer({ dest: "uploads/" });
 const aiService = new AIService();
 const fileProcessor = new FileProcessor();
 
+const app = express();
+
+
+app.use(express.json());
+
 export async function registerRoutes(app: Express): Promise<Server> {
+
   // Authentication routes
   app.post("/api/auth/signup", async (req, res) => {
     try {
@@ -466,6 +472,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to delete user" });
     }
   });
+
+    app.patch("/api/admin/users/:userId/role", authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    console.log("📩 Incoming role update request:", {
+      userIdParam: req.params.userId,
+      body: req.body,
+      authenticatedUser: req.user,
+    });
+
+    const userId = parseInt(req.params.userId);
+    const { role } = req.body;
+
+    if (!["user", "admin"].includes(role)) {
+      return res.status(400).json({ error: "Invalid role" });
+    }
+
+    if (userId === req.user!.id && role !== "admin") {
+      return res.status(400).json({ error: "You cannot remove your own admin access" });
+    }
+
+    const updatedUser = await storage.updateUserRole(userId, role);
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      id: updatedUser.id,
+      username: updatedUser.username,
+      email: updatedUser.email,
+      role: updatedUser.role,
+      createdAt: updatedUser.createdAt,
+    });
+  } catch (error) {
+    console.error("Update role error:", error);
+    res.status(500).json({ error: "Failed to update user role" });
+  }
+});
+
 
   app.get("/api/admin/documents", authenticateUser, requireAdmin, async (req, res) => {
     try {

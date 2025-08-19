@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { useDropzone } from "react-dropzone";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -14,10 +15,7 @@ import {
   Upload, 
   Trash2, 
   Shield, 
-  Calendar,
-  Download,
-  Plus,
-  AlertTriangle
+  Calendar
 } from "lucide-react";
 import type { User, Document } from "@shared/schema";
 
@@ -25,6 +23,15 @@ export function AdminPanel() {
   const [isUploading, setIsUploading] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Fetch current user
+  const { data: me } = useQuery({
+    queryKey: ["/api/auth/me"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/auth/me");
+      return response.json() as Promise<User>;
+    },
+  });
 
   // Fetch users
   const { data: users = [], isLoading: usersLoading } = useQuery({
@@ -70,12 +77,36 @@ export function AdminPanel() {
     },
   });
 
+  // Update role mutation
+const updateRoleMutation = useMutation({
+  mutationFn: async ({ userId, role }: { userId: number; role: "user" | "admin" }) => {
+    // apiRequest will throw if response is not ok
+    const response = await apiRequest("PATCH", `/api/admin/users/${userId}/role`, {
+      role,
+    });
+    return response.json(); // success path only
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+    toast({
+      title: "Role Updated",
+      description: "User role updated successfully.",
+    });
+  },
+  onError: (error: any) => {
+    toast({
+      title: "Update Failed",
+      description: error.message,
+      variant: "destructive",
+    });
+  },
+});
+
   // Upload document mutation
   const uploadDocumentMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
-      
       const response = await apiRequest("POST", "/api/admin/documents", formData);
       if (!response.ok) {
         const error = await response.json();
@@ -88,7 +119,7 @@ export function AdminPanel() {
       setIsUploading(false);
       toast({
         title: "Document Uploaded",
-        description: "Document has been successfully uploaded and is now available for AI processing.",
+        description: "Document uploaded successfully.",
       });
     },
     onError: (error: any) => {
@@ -115,7 +146,7 @@ export function AdminPanel() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/documents"] });
       toast({
         title: "Document Deleted",
-        description: "Document has been successfully deleted.",
+        description: "Document deleted successfully.",
       });
     },
     onError: (error: any) => {
@@ -178,7 +209,7 @@ export function AdminPanel() {
             <CardHeader>
               <CardTitle>Registered Users</CardTitle>
               <CardDescription>
-                Manage user accounts and permissions. Users can be deleted but not modified from this interface.
+                Manage user accounts and permissions. Update roles or delete users.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -208,14 +239,21 @@ export function AdminPanel() {
                         <TableCell className="font-medium">{user.username}</TableCell>
                         <TableCell>{user.email}</TableCell>
                         <TableCell>
-                          <Badge variant={user.role === "admin" ? "default" : "secondary"}>
-                            {user.role === "admin" ? (
-                              <Shield className="h-3 w-3 mr-1" />
-                            ) : (
-                              <Users className="h-3 w-3 mr-1" />
-                            )}
-                            {user.role}
-                          </Badge>
+                          <Select
+                            defaultValue={user.role}
+                            disabled={me?.id === user.id}
+                            onValueChange={(role) =>
+                              updateRoleMutation.mutate({ userId: user.id, role: role as "user" | "admin" })
+                            }
+                          >
+                            <SelectTrigger className="w-[130px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="user">User</SelectItem>
+                              <SelectItem value="admin">Admin</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-1 text-sm text-gray-500">
@@ -228,7 +266,7 @@ export function AdminPanel() {
                             variant="ghost"
                             size="sm"
                             onClick={() => deleteUserMutation.mutate(user.id)}
-                            disabled={deleteUserMutation.isPending}
+                            disabled={deleteUserMutation.isPending || me?.id === user.id}
                             className="text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -243,13 +281,14 @@ export function AdminPanel() {
           </Card>
         </TabsContent>
 
+        {/* Documents Tab remains unchanged */}
         <TabsContent value="documents" className="space-y-6">
           {/* Upload Section */}
           <Card>
             <CardHeader>
               <CardTitle>Upload Training Documents</CardTitle>
               <CardDescription>
-                Upload PDF, DOC, DOCX, or TXT files to expand the AI's knowledge base for better question answering.
+                Upload PDF, DOC, DOCX, or TXT files to expand the AI's knowledge base.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -288,7 +327,7 @@ export function AdminPanel() {
             <CardHeader>
               <CardTitle>Document Library</CardTitle>
               <CardDescription>
-                Manage training documents used by the AI for generating responses.
+                Manage training documents used by the AI.
               </CardDescription>
             </CardHeader>
             <CardContent>

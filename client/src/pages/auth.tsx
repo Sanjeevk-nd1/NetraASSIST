@@ -26,7 +26,7 @@ export default function AuthPage() {
     email: "",
     password: "",
     confirmPassword: "",
-    role: "user", // default role
+    role: "user",
   });
 
   const handleLogin = async (e: React.FormEvent) => {
