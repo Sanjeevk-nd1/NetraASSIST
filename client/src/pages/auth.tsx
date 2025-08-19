@@ -26,7 +26,7 @@ export default function AuthPage() {
     email: "",
     password: "",
     confirmPassword: "",
-    role: "user",
+    role: "user", // default role
   });
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -187,31 +187,7 @@ export default function AuthPage() {
                         className="mt-1"
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="role">Account Type</Label>
-                      <Select 
-                        value={signupData.role} 
-                        onValueChange={(value) => setSignupData({ ...signupData, role: value })}
-                      >
-                        <SelectTrigger className="mt-1">
-                          <SelectValue placeholder="Select account type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="user">
-                            <div className="flex items-center space-x-2">
-                              <Users className="h-4 w-4" />
-                              <span>Standard User</span>
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="admin">
-                            <div className="flex items-center space-x-2">
-                              <Shield className="h-4 w-4" />
-                              <span>Administrator</span>
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    
                     <Button type="submit" className="w-full" disabled={isLoading}>
                       {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Create Account

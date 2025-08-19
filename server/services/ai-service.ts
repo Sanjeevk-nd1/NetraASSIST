@@ -1,6 +1,8 @@
+// src/services/ai-service.ts
 import dotenv from "dotenv";
+import fetch from "node-fetch";
 import { Question } from "@shared/schema";
-import { storage } from "../storage";
+import { hybridSearch, buildContext } from "./vector-store";
 
 dotenv.config();
 
@@ -8,52 +10,36 @@ export class AIService {
   private azureApiKey: string;
   private baseUrl: string;
   private maxRetries = 3;
-  private retryDelayMs = 3000;
+  private retryDelayMs = 300; // tighter retry for speed
   private maxContextLength = 4000;
 
   constructor() {
     this.azureApiKey = process.env.AZURE_OPENAI_API_KEY || "";
     const instanceName = process.env.AZURE_OPENAI_API_INSTANCE_NAME;
-    const deploymentName = process.env.AZURE_OPENAI_API_DEPLOYMENT_NAME;
-    const apiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-02-15-preview"; // Fallback to a stable version if not specified
+    const deploymentName = process.env.AZURE_OPENAI_API_DEPLOYMENT_NAME; // chat/completions deployment
+    const apiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-02-15-preview";
 
-    if (!this.azureApiKey) {
-      console.error("AZURE_OPENAI_API_KEY environment variable is missing");
-      throw new Error("AZURE_OPENAI_API_KEY is required");
-    }
-    if (!instanceName) {
-      console.error("AZURE_OPENAI_API_INSTANCE_NAME environment variable is missing");
-      throw new Error("AZURE_OPENAI_API_INSTANCE_NAME is required");
-    }
-    if (!deploymentName) {
-      console.error("AZURE_OPENAI_API_DEPLOYMENT_NAME environment variable is missing");
-      throw new Error("AZURE_OPENAI_API_DEPLOYMENT_NAME is required");
-    }
+    if (!this.azureApiKey) throw new Error("AZURE_OPENAI_API_KEY is required");
+    if (!instanceName) throw new Error("AZURE_OPENAI_API_INSTANCE_NAME is required");
+    if (!deploymentName) throw new Error("AZURE_OPENAI_API_DEPLOYMENT_NAME is required");
 
     this.baseUrl = `https://${instanceName}.openai.azure.com/openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
-
-    if (!this.baseUrl.includes("openai.azure.com")) {
-      console.error("Invalid Azure OpenAI endpoint configuration");
-      throw new Error("Valid AZURE_OPENAI_API_INSTANCE_NAME and AZURE_OPENAI_API_DEPLOYMENT_NAME are required");
-    }
   }
 
   private checkApiKey() {
-    if (!this.azureApiKey) {
-      throw new Error("AZURE_OPENAI_API_KEY environment variable is required");
-    }
+    if (!this.azureApiKey) throw new Error("AZURE_OPENAI_API_KEY is required");
   }
 
-  async generateAnswer(question: string, context: string = ""): Promise<{ answer: string; sources: string[] }> {
+  async generateAnswer(question: string): Promise<{ answer: string; sources: string[] }> {
     this.checkApiKey();
 
-    if (!question.trim()) {
-      console.error("Empty or invalid question provided");
+    if (!question?.trim()) {
       return { answer: "Invalid question provided", sources: [] };
     }
 
-    const truncatedContext =
-      context.length > this.maxContextLength ? context.substring(0, this.maxContextLength) + "..." : context;
+    // QDRANT-ONLY fast retrieval (hybrid re-rank)
+    const retrieved = await hybridSearch(question, 6, 40, 0.7);
+    const { context, sources } = buildContext(retrieved, this.maxContextLength);
 
     const prompt = `
 You are an expert in compliance and policy enforcement at Netradyne, but you can also engage in natural conversation. Follow these instructions based on the input:
@@ -69,143 +55,79 @@ You are an expert in compliance and policy enforcement at Netradyne, but you can
 
 Ensure all responses are comprehensive, user-friendly, and professionally formatted for business use.
 
-Context: ${truncatedContext}
+Context:
+${context}
 
 Input: ${question}
-`;
+`.trim();
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        console.log(`Attempt ${attempt} for question: ${question.substring(0, 50)}...`);
         const response = await fetch(this.baseUrl, {
           method: "POST",
           headers: {
-            "api-key": `${this.azureApiKey}`,
+            "api-key": this.azureApiKey,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             messages: [{ role: "user", content: prompt }],
             max_tokens: 500,
-            temperature: 0.7,
+            temperature: 0.2, // lower for accuracy/consistency
           }),
         });
 
         if (!response.ok) {
           if (response.status === 429 && attempt < this.maxRetries) {
-            console.warn(
-              `Rate limit hit on attempt ${attempt} for question: ${question.substring(0, 50)}... Retrying after ${this.retryDelayMs}ms`
-            );
-            await new Promise(resolve => setTimeout(resolve, this.retryDelayMs * attempt));
+            await new Promise((r) => setTimeout(r, this.retryDelayMs * attempt));
             continue;
           }
           throw new Error(`Azure OpenAI API error: ${response.status} ${response.statusText}`);
         }
 
         const data = await response.json();
-        const answer = data.choices[0]?.message?.content || "No response generated";
-        const sources = context ? this.extractSources(context) : [];
-
+        const answer = data.choices?.[0]?.message?.content || "No response generated";
         return { answer, sources };
-      } catch (error) {
-        console.error(`Attempt ${attempt} failed for question "${question.substring(0, 50)}...":`, error);
+      } catch (err) {
         if (attempt === this.maxRetries) {
-          throw new Error(
-            `Failed to generate answer after ${this.maxRetries} attempts: ${
-              error instanceof Error ? error.message : "Unknown error"
-            }`
-          );
+          return {
+            answer: "Error generating answer - please try again.",
+            sources: [],
+          };
         }
       }
     }
 
-    throw new Error("Unexpected error in generateAnswer");
-  }
-
-  private extractSources(context: string): string[] {
-    const sentences = context.split(".").filter(s => s.trim().length > 20);
-    return sentences.slice(0, 3).map(s => s.trim() + ".");
+    return { answer: "Unexpected error", sources: [] };
   }
 
   async processQuestions(questions: Question[]): Promise<Question[]> {
     this.checkApiKey();
-
-    const context = await this.loadTrainingContext();
-    const processedQuestions: Question[] = [];
-
-    if (!context) {
-      console.warn("No context available; answers may be limited");
-    }
+    const processed: Question[] = [];
 
     for (let i = 0; i < questions.length; i++) {
-      const question = questions[i];
-      if (!question.text?.trim()) {
-        console.error(`Skipping invalid question at index ${i}: ${JSON.stringify(question)}`);
-        processedQuestions.push({
-          ...question,
-          status: "failed",
-          answer: "Invalid question provided",
-          sources: [],
-        });
+      const q = questions[i];
+      if (!q.text?.trim()) {
+        processed.push({ ...q, status: "failed", answer: "Invalid question provided", sources: [] });
         continue;
       }
-
       try {
-        if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, this.retryDelayMs));
-        }
-
-        console.log(`Processing question ${i + 1}/${questions.length}: ${question.text.substring(0, 50)}...`);
-        const result = await this.generateAnswer(question.text, context);
-        processedQuestions.push({
-          ...question,
-          answer: result.answer,
-          sources: result.sources,
-          status: "completed",
-        });
-      } catch (error) {
-        console.error(`Error processing question ${i + 1}: ${question.text.substring(0, 50)}...`, error);
-        processedQuestions.push({
-          ...question,
+        if (i > 0) await new Promise((r) => setTimeout(r, this.retryDelayMs)); // small gap for rate limits
+        const { answer, sources } = await this.generateAnswer(q.text);
+        processed.push({ ...q, status: "completed", answer, sources });
+      } catch {
+        processed.push({
+          ...q,
           status: "failed",
           answer: "Error generating answer - please try regenerating this question",
           sources: [],
         });
       }
     }
-
-    return processedQuestions;
+    return processed;
   }
 
-  private async loadTrainingContext(): Promise<string> {
-    try {
-      const documents = await storage.getAllDocuments();
-      if (!documents || documents.length === 0) {
-        console.warn("No documents found in rfpd database");
-        return "";
-      }
-
-      let context = "";
-      for (const doc of documents) {
-        if (!doc.content) {
-          console.warn(`Document ${doc.id} has no content`);
-          continue;
-        }
-        context += `${doc.content}\n\n`;
-      }
-
-      if (context.length > this.maxContextLength) {
-        context = context.substring(0, this.maxContextLength) + "...";
-      }
-
-      console.log(`Loaded context from ${documents.length} documents, length: ${context.length} characters`);
-      return context.trim();
-    } catch (error) {
-      console.error("Error loading training context from rfpd:", error);
-      return "";
-    }
-  }
-
-  async generateChatResponse(message: string, context: string = ""): Promise<{ answer: string; sources: string[] }> {
-    return this.generateAnswer(message, context);
+  // Kept for compatibility
+  async generateChatResponse(message: string): Promise<{ answer: string; sources: string[] }> {
+    return this.generateAnswer(message);
   }
 }
