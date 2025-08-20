@@ -159,12 +159,22 @@ const updateRoleMutation = useMutation({
   });
 
   // File drop handler
+  const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
+
   const onDrop = (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      setIsUploading(true);
-      uploadDocumentMutation.mutate(acceptedFiles[0]);
+      setUploadingFiles(acceptedFiles);
+      acceptedFiles.forEach((file) => {
+        uploadDocumentMutation.mutate(file, {
+          onSettled: () => {
+            setUploadingFiles((prev) => prev.filter((f) => f !== file));
+          },
+        });
+      });
     }
   };
+
+
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -174,7 +184,7 @@ const updateRoleMutation = useMutation({
       "application/msword": [".doc"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
     },
-    maxFiles: 1,
+    multiple: true,
   });
 
   const formatFileSize = (bytes: number) => {
