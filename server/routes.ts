@@ -3,12 +3,12 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { AIService } from "./services/ai-service";
 import { FileProcessor } from "./services/file-processor";
-import { authenticateUser, requireAdmin } from "./middleware/auth";
 import multer from "multer";
 import bcrypt from "bcrypt";
 import path from "path";
 import fs from "fs";
 import * as XLSX from "xlsx";
+import { attachUser } from './middleware/auth';
 import { 
   fileUploadSchema, 
   acceptAnswerSchema, 
@@ -17,46 +17,46 @@ import {
   signupSchema,
   chatQuerySchema
 } from "@shared/schema";
+import { jwtMiddleware, setTokenCookie, clearTokenCookie } from "./middleware/jwt";
 
 const upload = multer({ dest: "uploads/" });
 const aiService = new AIService();
 const fileProcessor = new FileProcessor();
 
 const app = express();
-
-
 app.use(express.json());
+
+// Middleware to check admin role
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  next();
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
-  // Authentication routes
+  // Signup
   app.post("/api/auth/signup", async (req, res) => {
     try {
       const userData = signupSchema.parse(req.body);
-      
-      // Check if user already exists
+
       const existingUser = await storage.getUserByUsername(userData.username);
-      if (existingUser) {
-        return res.status(400).json({ error: "Username already exists" });
-      }
-      
+      if (existingUser) return res.status(400).json({ error: "Username already exists" });
+
       const existingEmail = await storage.getUserByEmail(userData.email);
-      if (existingEmail) {
-        return res.status(400).json({ error: "Email already exists" });
-      }
-      
-      // Hash password
+      if (existingEmail) return res.status(400).json({ error: "Email already exists" });
+
       const hashedPassword = await bcrypt.hash(userData.password, 10);
-      
-      // Create user
+
       const user = await storage.createUser({
         ...userData,
         password: hashedPassword,
       });
-      
-      // Set session
-      req.session.userId = user.id;
-      
+
+      // Issue JWT
+      setTokenCookie(res, { userId: user.id });
+
       res.json({
         user: {
           id: user.id,
@@ -71,25 +71,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Login
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { username, password } = loginSchema.parse(req.body);
-      
-      // Find user
+
       const user = await storage.getUserByUsername(username);
-      if (!user) {
-        return res.status(401).json({ error: "Invalid credentials" });
-      }
-      
-      // Verify password
+      if (!user) return res.status(401).json({ error: "Invalid credentials" });
+
       const isValidPassword = await bcrypt.compare(password, user.password);
-      if (!isValidPassword) {
-        return res.status(401).json({ error: "Invalid credentials" });
-      }
-      
-      // Set session
-      req.session.userId = user.id;
-      
+      if (!isValidPassword) return res.status(401).json({ error: "Invalid credentials" });
+
+      // Issue JWT
+      setTokenCookie(res, { userId: user.id });
+
       res.json({
         user: {
           id: user.id,
@@ -104,21 +99,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Logout
   app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy((err) => {
-      if (err) {
-        return res.status(500).json({ error: "Failed to logout" });
-      }
-      res.json({ success: true });
-    });
+    clearTokenCookie(res);
+    res.json({ success: true });
   });
 
-  app.get("/api/auth/me", authenticateUser, (req, res) => {
-    res.json({ user: req.user });
+  // Get current user
+  app.get("/api/auth/me", jwtMiddleware, async (req, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+      const user = await storage.getUser(req.user.id);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      });
+    } catch (error) {
+      console.error("Get me error:", error);
+      res.status(500).json({ error: "Failed to fetch user" });
+    }
   });
 
   // File upload endpoint
-  app.post("/api/upload", authenticateUser, upload.single("file"), async (req, res) => {
+  app.post("/api/upload", jwtMiddleware, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+      const { type } = req.body;
+      if (!type || !["excel", "pdf"].includes(type)) {
+        return res.status(400).json({ error: "Invalid file type" });
+      }
+
+      const job = await storage.createProcessingJob({
+        userId: req.user!.id,
+        fileName: req.file.originalname,
+        fileType: type,
+        status: "pending",
+        questions: null,
+      });
+
+      const questions = await fileProcessor.processFile(req.file.path, type as "excel" | "pdf");
+
+      await storage.updateQuestions(job.id, questions);
+      await storage.updateProcessingJob(job.id, { status: "processing" });
+
+      fs.unlinkSync(req.file.path);
+
+      res.json({ jobId: job.id, questionsCount: questions.length });
+    } catch (error) {
+      console.error("Upload error:", error);
+      res.status(500).json({ error: "Failed to process file" });
+    }
+  });
+
+  // File upload endpoint
+  app.post("/api/upload", jwtMiddleware, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -157,7 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get job status
-  app.get("/api/jobs/:jobId", authenticateUser, async (req, res) => {
+  app.get("/api/jobs/:jobId", jwtMiddleware, async (req, res) => {
     try {
       const jobId = parseInt(req.params.jobId);
       const job = await storage.getProcessingJob(jobId);
@@ -179,7 +218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get user's jobs
-  app.get("/api/jobs", authenticateUser, async (req, res) => {
+  app.get("/api/jobs", jwtMiddleware, async (req, res) => {
     try {
       const jobs = await storage.getUserProcessingJobs(req.user!.id);
       res.json(jobs);
@@ -190,7 +229,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Generate answers for all questions
-  app.post("/api/jobs/:jobId/generate", authenticateUser, async (req, res) => {
+  app.post("/api/jobs/:jobId/generate", jwtMiddleware, async (req, res) => {
     try {
       const jobId = parseInt(req.params.jobId);
       const job = await storage.getProcessingJob(jobId);
@@ -220,7 +259,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Accept answer
-  app.post("/api/jobs/:jobId/accept", authenticateUser, async (req, res) => {
+  app.post("/api/jobs/:jobId/accept", jwtMiddleware, async (req, res) => {
     try {
       const jobId = parseInt(req.params.jobId);
       const { questionId } = acceptAnswerSchema.parse(req.body);
@@ -249,7 +288,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Regenerate answer
-  app.post("/api/jobs/:jobId/regenerate", authenticateUser, async (req, res) => {
+  app.post("/api/jobs/:jobId/regenerate", jwtMiddleware, async (req, res) => {
     try {
       const jobId = parseInt(req.params.jobId);
       const { questionId } = regenerateAnswerSchema.parse(req.body);
@@ -283,7 +322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Chat endpoints
-  app.post("/api/chat", authenticateUser, async (req, res) => {
+  app.post("/api/chat", jwtMiddleware, async (req, res) => {
     try {
       const { message } = chatQuerySchema.parse(req.body);
       
@@ -311,7 +350,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/chat/history", authenticateUser, async (req, res) => {
+  app.get("/api/chat/history", jwtMiddleware, async (req, res) => {
     try {
       const messages = await storage.getUserChatMessages(req.user!.id);
       res.json(messages);
@@ -321,7 +360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/chat/history", authenticateUser, async (req, res) => {
+  app.delete("/api/chat/history", jwtMiddleware, async (req, res) => {
     try {
       await storage.clearUserChatHistory(req.user!.id);
       res.json({ success: true });
@@ -332,7 +371,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Export results
-  app.get("/api/jobs/:jobId/export", authenticateUser, async (req, res) => {
+  app.get("/api/jobs/:jobId/export", jwtMiddleware, async (req, res) => {
     try {
       const jobId = parseInt(req.params.jobId);
       const job = await storage.getProcessingJob(jobId);
@@ -388,7 +427,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Export chat history
-  app.get("/api/chat/export", authenticateUser, async (req, res) => {
+  app.get("/api/chat/export", jwtMiddleware, async (req, res) => {
     try {
       const chatHistory = await storage.getUserChatMessages(req.user!.id);
       
@@ -433,8 +472,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin routes: Users
+  app.get("/api/admin/users", jwtMiddleware, attachUser, requireAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      const safeUsers = users.map(u => ({
+        id: u.id,
+        username: u.username,
+        email: u.email,
+        role: u.role,
+        createdAt: u.createdAt,
+      }));
+      res.json(safeUsers);
+    } catch (error) {
+      console.error("Get users error:", error);
+      res.status(500).json({ error: "Failed to get users" });
+    }
+  });
+
+  app.delete("/api/admin/users/:userId", jwtMiddleware,attachUser, requireAdmin, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      if (userId === req.user!.id) return res.status(400).json({ error: "Cannot delete your own account" });
+
+      const success = await storage.deleteUser(userId);
+      if (!success) return res.status(404).json({ error: "User not found" });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete user error:", error);
+      res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
+  app.patch("/api/admin/users/:userId/role", jwtMiddleware,attachUser, requireAdmin, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const { role } = req.body;
+      if (!["user","admin"].includes(role)) return res.status(400).json({ error: "Invalid role" });
+      if (userId === req.user!.id && role !== "admin") return res.status(400).json({ error: "Cannot remove your own admin access" });
+
+      const updatedUser = await storage.updateUserRole(userId, role);
+      if (!updatedUser) return res.status(404).json({ error: "User not found" });
+
+      res.json({
+        id: updatedUser.id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        createdAt: updatedUser.createdAt,
+      });
+    } catch (error) {
+      console.error("Update role error:", error);
+      res.status(500).json({ error: "Failed to update user role" });
+    }
+  });
+
   // Admin routes
-  app.get("/api/admin/users", authenticateUser, requireAdmin, async (req, res) => {
+  app.get("/api/admin/users", jwtMiddleware,attachUser, requireAdmin, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
       // Don't return passwords
@@ -452,7 +547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/users/:userId", authenticateUser, requireAdmin, async (req, res) => {
+  app.delete("/api/admin/users/:userId", jwtMiddleware, attachUser,requireAdmin, async (req, res) => {
     try {
       const userId = parseInt(req.params.userId);
       
@@ -473,9 +568,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-    app.patch("/api/admin/users/:userId/role", authenticateUser, requireAdmin, async (req, res) => {
+    app.patch("/api/admin/users/:userId/role", jwtMiddleware, attachUser,requireAdmin, async (req, res) => {
   try {
-    console.log("📩 Incoming role update request:", {
+    console.log("Incoming role update request:", {
       userIdParam: req.params.userId,
       body: req.body,
       authenticatedUser: req.user,
@@ -512,7 +607,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 });
 
 
-  app.get("/api/admin/documents", authenticateUser, requireAdmin, async (req, res) => {
+  app.get("/api/admin/documents", jwtMiddleware, attachUser, requireAdmin, async (req, res) => {
     try {
       const documents = await storage.getAllDocuments();
       res.json(documents);
@@ -522,7 +617,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/documents", authenticateUser, requireAdmin, upload.single("file"), async (req, res) => {
+  app.post("/api/admin/documents", jwtMiddleware,attachUser, requireAdmin, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -553,7 +648,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/documents/:documentId", authenticateUser, requireAdmin, async (req, res) => {
+  app.delete("/api/admin/documents/:documentId", jwtMiddleware,attachUser, requireAdmin, async (req, res) => {
     try {
       const documentId = parseInt(req.params.documentId);
       const document = await storage.getDocument(documentId);
@@ -579,6 +674,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to delete document" });
     }
   });
+
 
   const httpServer = createServer(app);
   return httpServer;

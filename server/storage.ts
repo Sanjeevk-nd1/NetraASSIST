@@ -18,8 +18,6 @@ import {
 import { eq } from "drizzle-orm";
 
 import dotenv from "dotenv";
-
-// Load environment variables
 dotenv.config();
 
 const { Client } = pg;
@@ -31,6 +29,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
   deleteUser(id: number): Promise<boolean>;
+  updateUserRole(userId: number, role: "user" | "admin"): Promise<User | undefined>;
   createDocument(document: InsertDocument): Promise<Document>;
   getDocument(id: number): Promise<Document | undefined>;
   getAllDocuments(): Promise<Document[]>;
@@ -47,8 +46,6 @@ export interface IStorage {
   getUserChatMessages(userId: number): Promise<ChatMessage[]>;
   deleteChatMessage(id: number): Promise<boolean>;
   clearUserChatHistory(userId: number): Promise<boolean>;
-    updateUserRole(userId: number, role: "user" | "admin"): Promise<User | undefined>;
-
 }
 
 export class PostgresStorage implements IStorage {
@@ -61,10 +58,10 @@ export class PostgresStorage implements IStorage {
       throw new Error("DATABASE_URL is required");
     }
     console.log("Storage connecting to:", connectionString);
+
     const client = new Client({ connectionString });
-    client.on("error", (err: Error) => {
-      console.error("PostgreSQL client error:", err.message);
-    });
+    client.on("error", (err: Error) => console.error("PostgreSQL client error:", err.message));
+
     this.db = drizzle(client, { schema: { users, documents, processingJobs, chatMessages } });
     client.connect().catch(err => {
       console.error("Failed to connect to PostgreSQL in storage.ts:", err.message);
@@ -101,7 +98,7 @@ export class PostgresStorage implements IStorage {
     return result.length > 0;
   }
 
-    async updateUserRole(userId: number, role: "user" | "admin"): Promise<User | undefined> {
+  async updateUserRole(userId: number, role: "user" | "admin"): Promise<User | undefined> {
     const [updatedUser] = await this.db
       .update(users)
       .set({ role })
@@ -109,7 +106,6 @@ export class PostgresStorage implements IStorage {
       .returning();
     return updatedUser;
   }
-
 
   async createDocument(document: InsertDocument): Promise<Document> {
     const [newDocument] = await this.db.insert(documents).values(document).returning();
