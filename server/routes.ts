@@ -35,7 +35,6 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-
   // Signup
   app.post("/api/auth/signup", async (req, res) => {
     try {
@@ -54,7 +53,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         password: hashedPassword,
       });
 
-      // Issue JWT
       setTokenCookie(res, { userId: user.id });
 
       res.json({
@@ -82,7 +80,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isValidPassword = await bcrypt.compare(password, user.password);
       if (!isValidPassword) return res.status(401).json({ error: "Invalid credentials" });
 
-      // Issue JWT
       setTokenCookie(res, { userId: user.id });
 
       res.json({
@@ -127,49 +124,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // File upload endpoint
   app.post("/api/upload", jwtMiddleware, upload.single("file"), async (req, res) => {
     try {
-      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-
-      const { type } = req.body;
-      if (!type || !["excel", "pdf"].includes(type)) {
-        return res.status(400).json({ error: "Invalid file type" });
-      }
-
-      const job = await storage.createProcessingJob({
-        userId: req.user!.id,
-        fileName: req.file.originalname,
-        fileType: type,
-        status: "pending",
-        questions: null,
-      });
-
-      const questions = await fileProcessor.processFile(req.file.path, type as "excel" | "pdf");
-
-      await storage.updateQuestions(job.id, questions);
-      await storage.updateProcessingJob(job.id, { status: "processing" });
-
-      fs.unlinkSync(req.file.path);
-
-      res.json({ jobId: job.id, questionsCount: questions.length });
-    } catch (error) {
-      console.error("Upload error:", error);
-      res.status(500).json({ error: "Failed to process file" });
-    }
-  });
-
-  // File upload endpoint
-  app.post("/api/upload", jwtMiddleware, upload.single("file"), async (req, res) => {
-    try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
       }
 
       const { type } = req.body;
-      
       if (!type || !["excel", "pdf"].includes(type)) {
         return res.status(400).json({ error: "Invalid file type specified" });
       }
 
-      // Create processing job
       const job = await storage.createProcessingJob({
         userId: req.user!.id,
         fileName: req.file.originalname,
@@ -178,14 +141,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         questions: null,
       });
 
-      // Process file to extract questions
       const questions = await fileProcessor.processFile(req.file.path, type as "excel" | "pdf");
       
-      // Update job with extracted questions
       await storage.updateQuestions(job.id, questions);
       await storage.updateProcessingJob(job.id, { status: "processing" });
 
-      // Clean up uploaded file
       fs.unlinkSync(req.file.path);
 
       res.json({ jobId: job.id, questionsCount: questions.length });
@@ -205,7 +165,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Job not found" });
       }
 
-      // Check if user owns this job
       if (job.userId !== req.user!.id && req.user!.role !== "admin") {
         return res.status(403).json({ error: "Access denied" });
       }
@@ -238,15 +197,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Job not found" });
       }
 
-      // Check if user owns this job
       if (job.userId !== req.user!.id && req.user!.role !== "admin") {
         return res.status(403).json({ error: "Access denied" });
       }
 
-      // Generate answers for all questions
       const processedQuestions = await aiService.processQuestions(job.questions);
       
-      // Update job with processed questions
       await storage.updateQuestions(jobId, processedQuestions);
       await storage.updateProcessingJob(jobId, { status: "completed" });
 
@@ -269,7 +225,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Job not found" });
       }
 
-      // Check if user owns this job
       if (job.userId !== req.user!.id && req.user!.role !== "admin") {
         return res.status(403).json({ error: "Access denied" });
       }
@@ -298,7 +253,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Job not found" });
       }
 
-      // Check if user owns this job
       if (job.userId !== req.user!.id && req.user!.role !== "admin") {
         return res.status(403).json({ error: "Access denied" });
       }
@@ -308,10 +262,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Question not found" });
       }
 
-      // Generate new answer
-      const result = await aiService.generateAnswer(question.text);
+      const result = await aiService.generateAnswer(question.text, job.questions);
       
-      // Update question with new answer
       await storage.updateQuestionAnswer(jobId, questionId, result.answer);
 
       res.json({ success: true, answer: result.answer, sources: result.sources });
@@ -321,24 +273,172 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Chat endpoints
+  // Export job questions/answers
+  app.get("/api/jobs/:jobId/export", jwtMiddleware, async (req, res) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+      const job = await storage.getProcessingJob(jobId);
+      
+      if (!job || !job.questions) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+
+      if (job.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const allAccepted = job.questions.every(q => q.accepted);
+      if (!allAccepted) {
+        return res.status(400).json({ error: "All answers must be accepted before exporting" });
+      }
+
+      const excelData = job.questions.map((q, index) => ({
+        "Question Number": index + 1,
+        Question: q.text,
+        Answer: q.answer || "",
+        Sources: q.sources?.join("; ") || "",
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      
+      const colWidths = [
+        { wch: 15 },
+        { wch: 40 },
+        { wch: 80 },
+        { wch: 30 },
+      ];
+      ws['!cols'] = colWidths;
+      
+      XLSX.utils.book_append_sheet(wb, ws, "Responses");
+
+      const generatedFilesDir = "generated_files";
+      if (!fs.existsSync(generatedFilesDir)) {
+        fs.mkdirSync(generatedFilesDir, { recursive: true });
+      }
+
+      const fileName = `job_${jobId}_${Date.now()}.xlsx`;
+      const filePath = path.join(generatedFilesDir, fileName);
+
+      try {
+        XLSX.writeFile(wb, filePath, { bookType: 'xlsx' });
+      } catch (writeError) {
+        console.error("XLSX write error:", writeError);
+        throw new Error("Failed to write Excel file");
+      }
+
+      const stats = fs.statSync(filePath);
+      await storage.createGeneratedFile({
+        userId: req.user!.id,
+        jobId,
+        conversationId: null,
+        fileName,
+        filePath,
+        fileSize: stats.size,
+      });
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      
+      res.sendFile(filePath, { root: process.cwd() }, (err) => {
+        if (err) {
+          console.error("Send file error:", err);
+          res.status(500).json({ error: "Failed to send file" });
+        }
+      });
+    } catch (error) {
+      console.error("Export job error:", error);
+      res.status(500).json({ error: "Failed to export job" });
+    }
+  });
+
+  // Create new conversation
+  app.post("/api/conversations", jwtMiddleware, async (req, res) => {
+    try {
+      const currentDateTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
+      const conversation = await storage.createConversation({
+        userId: req.user!.id,
+        title: currentDateTime,
+      });
+      res.json(conversation);
+    } catch (error) {
+      console.error("Create conversation error:", error);
+      res.status(500).json({ error: "Failed to create conversation" });
+    }
+  });
+
+  // Get user's conversations
+  app.get("/api/conversations", jwtMiddleware, async (req, res) => {
+    try {
+      const conversations = await storage.getUserConversations(req.user!.id);
+      res.json(conversations);
+    } catch (error) {
+      console.error("Get conversations error:", error);
+      res.status(500).json({ error: "Failed to get conversations" });
+    }
+  });
+
+  // Delete conversation
+    app.delete("/api/conversations/:conversationId", jwtMiddleware, async (req, res) => {
+    try {
+      const conversationId = parseInt(req.params.conversationId);
+      const conversation = await storage.getConversation(conversationId);
+      if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+
+      if (conversation.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const success = await storage.deleteConversation(conversationId);
+      if (!success) return res.status(404).json({ error: "Conversation not found" });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete conversation error:", error);
+      res.status(500).json({ error: "Failed to delete conversation" });
+    }
+  });
+
+  // Chat endpoint
   app.post("/api/chat", jwtMiddleware, async (req, res) => {
     try {
-      const { message } = chatQuerySchema.parse(req.body);
+      const { message, conversationId } = chatQuerySchema.parse(req.body);
       
-      // Generate response using AI service
-      const result = await aiService.generateChatResponse(message);
+      let convId = conversationId;
+      if (!convId) {
+        const currentDateTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
+        const newConversation = await storage.createConversation({
+          userId: req.user!.id,
+          title: currentDateTime,
+        });
+        convId = newConversation.id;
+      }
+
+      const conversation = await storage.getConversation(convId);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      if (conversation.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const history = await storage.getUserChatMessages(req.user!.id, convId);
+      const result = await aiService.generateChatResponse(message, history);
       
-      // Save chat message
       const chatMessage = await storage.createChatMessage({
         userId: req.user!.id,
+        conversationId: convId,
         message,
         response: result.answer,
         sources: result.sources,
       });
 
+      await storage.updateConversation(convId, { updatedAt: new Date() });
+
       res.json({
         id: chatMessage.id,
+        conversationId: chatMessage.conversationId,
         message: chatMessage.message,
         response: chatMessage.response,
         sources: chatMessage.sources,
@@ -350,9 +450,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/chat/history", jwtMiddleware, async (req, res) => {
+  // Get conversation messages
+  app.get("/api/chat/history/:conversationId", jwtMiddleware, async (req, res) => {
     try {
-      const messages = await storage.getUserChatMessages(req.user!.id);
+      const conversationId = parseInt(req.params.conversationId);
+      const conversation = await storage.getConversation(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      if (conversation.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const messages = await storage.getUserChatMessages(req.user!.id, conversationId);
       res.json(messages);
     } catch (error) {
       console.error("Chat history error:", error);
@@ -360,9 +471,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/chat/history", jwtMiddleware, async (req, res) => {
+  // Clear conversation history
+  app.delete("/api/chat/history/:conversationId", jwtMiddleware, async (req, res) => {
     try {
-      await storage.clearUserChatHistory(req.user!.id);
+      const conversationId = parseInt(req.params.conversationId);
+      const conversation = await storage.getConversation(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      if (conversation.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      await storage.clearUserChatHistory(req.user!.id, conversationId);
       res.json({ success: true });
     } catch (error) {
       console.error("Clear chat history error:", error);
@@ -370,105 +492,156 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Export results
-  app.get("/api/jobs/:jobId/export", jwtMiddleware, async (req, res) => {
+  // Export chat history
+  app.get("/api/chat/export/:conversationId", jwtMiddleware, async (req, res) => {
     try {
-      const jobId = parseInt(req.params.jobId);
-      const job = await storage.getProcessingJob(jobId);
-      
-      if (!job || !job.questions) {
-        return res.status(404).json({ error: "Job not found" });
+      const conversationId = parseInt(req.params.conversationId);
+      const conversation = await storage.getConversation(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
       }
 
-      // Check if user owns this job
-      if (job.userId !== req.user!.id && req.user!.role !== "admin") {
+      if (conversation.userId !== req.user!.id && req.user!.role !== "admin") {
         return res.status(403).json({ error: "Access denied" });
       }
 
-      // Check if all questions are accepted
-      const allAccepted = job.questions.every(q => q.accepted);
-      if (!allAccepted) {
-        return res.status(400).json({ error: "Not all questions are accepted" });
-      }
-
-      // Generate Excel file
-      const excelData = job.questions.map(q => ({
-        Question: q.text,
-        Answer: q.answer || "",
-        Sources: q.sources?.join("; ") || "",
-      }));
-
-      // Create workbook and worksheet
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(excelData);
-      
-      // Auto-adjust column widths
-      const colWidths = [
-        { wch: 50 }, // Question column
-        { wch: 80 }, // Answer column
-        { wch: 30 }, // Sources column
-      ];
-      ws['!cols'] = colWidths;
-      
-      // Add worksheet to workbook
-      XLSX.utils.book_append_sheet(wb, ws, "RFP Responses");
-      
-      // Generate Excel buffer
-      const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-      
-      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      res.setHeader("Content-Disposition", `attachment; filename="rfp_responses_${job.id}.xlsx"`);
-      
-      res.send(excelBuffer);
-    } catch (error) {
-      console.error("Export error:", error);
-      res.status(500).json({ error: "Failed to export results" });
-    }
-  });
-
-  // Export chat history
-  app.get("/api/chat/export", jwtMiddleware, async (req, res) => {
-    try {
-      const chatHistory = await storage.getUserChatMessages(req.user!.id);
+      const chatHistory = await storage.getUserChatMessages(req.user!.id, conversationId);
       
       if (!chatHistory || chatHistory.length === 0) {
         return res.status(404).json({ error: "No chat history found" });
       }
 
-      // Generate Excel file for chat history
       const excelData = chatHistory.map(chat => ({
         Question: chat.message,
-        Response: chat.response,
+        Response: chat.response || "",
         Sources: chat.sources?.join("; ") || "",
         Date: chat.createdAt ? new Date(chat.createdAt).toLocaleString() : "",
       }));
 
-      // Create workbook and worksheet
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.json_to_sheet(excelData);
       
-      // Auto-adjust column widths
       const colWidths = [
-        { wch: 40 }, // Question column
-        { wch: 80 }, // Response column
-        { wch: 30 }, // Sources column
-        { wch: 20 }, // Date column
+        { wch: 40 },
+        { wch: 80 },
+        { wch: 30 },
+        { wch: 20 },
       ];
       ws['!cols'] = colWidths;
       
-      // Add worksheet to workbook
       XLSX.utils.book_append_sheet(wb, ws, "Chat History");
-      
-      // Generate Excel buffer
-      const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-      
+
+      const generatedFilesDir = "generated_files";
+      if (!fs.existsSync(generatedFilesDir)) {
+        fs.mkdirSync(generatedFilesDir, { recursive: true });
+      }
+
+      const fileName = `chat_${conversationId}_${Date.now()}.xlsx`;
+      const filePath = path.join(generatedFilesDir, fileName);
+
+      try {
+        XLSX.writeFile(wb, filePath, { bookType: 'xlsx' });
+      } catch (writeError) {
+        console.error("XLSX write error:", writeError);
+        throw new Error("Failed to write Excel file");
+      }
+
+      const stats = fs.statSync(filePath);
+      await storage.createGeneratedFile({
+        userId: req.user!.id,
+        jobId: null,
+        conversationId,
+        fileName,
+        filePath,
+        fileSize: stats.size,
+      });
+
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      res.setHeader("Content-Disposition", `attachment; filename="chat_history_${req.user!.id}.xlsx"`);
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
       
-      res.send(excelBuffer);
+      res.sendFile(filePath, { root: process.cwd() }, (err) => {
+        if (err) {
+          console.error("Send file error:", err);
+          res.status(500).json({ error: "Failed to send file" });
+        }
+      });
     } catch (error) {
       console.error("Export chat history error:", error);
       res.status(500).json({ error: "Failed to export chat history" });
+    }
+  });
+
+  // Get user's generated files
+  app.get("/api/files", jwtMiddleware, async (req, res) => {
+    try {
+      const files = await storage.getUserGeneratedFiles(req.user!.id);
+      res.json(files);
+    } catch (error) {
+      console.error("Get files error:", error);
+      res.status(500).json({ error: "Failed to get files" });
+    }
+  });
+
+  // Download generated file
+  app.get("/api/files/:fileId", jwtMiddleware, async (req, res) => {
+    try {
+      const fileId = parseInt(req.params.fileId);
+      const file = await storage.getGeneratedFile(fileId);
+      
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      if (file.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      if (!fs.existsSync(file.filePath)) {
+        return res.status(404).json({ error: "File not found on server" });
+      }
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${file.fileName}"`);
+      
+      res.sendFile(file.filePath, { root: process.cwd() }, (err) => {
+        if (err) {
+          console.error("Send file error:", err);
+          res.status(500).json({ error: "Failed to send file" });
+        }
+      });
+    } catch (error) {
+      console.error("Get file error:", error);
+      res.status(500).json({ error: "Failed to get file" });
+    }
+  });
+
+  // Delete generated file
+  app.delete("/api/files/:fileId", jwtMiddleware, async (req, res) => {
+    try {
+      const fileId = parseInt(req.params.fileId);
+      const file = await storage.getGeneratedFile(fileId);
+      
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      if (file.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      if (fs.existsSync(file.filePath)) {
+        fs.unlinkSync(file.filePath);
+      }
+
+      const success = await storage.deleteGeneratedFile(fileId);
+      if (!success) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete file error:", error);
+      res.status(500).json({ error: "Failed to delete file" });
     }
   });
 
@@ -490,7 +663,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/users/:userId", jwtMiddleware,attachUser, requireAdmin, async (req, res) => {
+  app.delete("/api/admin/users/:userId", jwtMiddleware, attachUser, requireAdmin, async (req, res) => {
     try {
       const userId = parseInt(req.params.userId);
       if (userId === req.user!.id) return res.status(400).json({ error: "Cannot delete your own account" });
@@ -505,11 +678,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/users/:userId/role", jwtMiddleware,attachUser, requireAdmin, async (req, res) => {
+  app.patch("/api/admin/users/:userId/role", jwtMiddleware, attachUser, requireAdmin, async (req, res) => {
     try {
       const userId = parseInt(req.params.userId);
       const { role } = req.body;
-      if (!["user","admin"].includes(role)) return res.status(400).json({ error: "Invalid role" });
+      if (!["user", "admin"].includes(role)) return res.status(400).json({ error: "Invalid role" });
       if (userId === req.user!.id && role !== "admin") return res.status(400).json({ error: "Cannot remove your own admin access" });
 
       const updatedUser = await storage.updateUserRole(userId, role);
@@ -528,85 +701,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Admin routes
-  app.get("/api/admin/users", jwtMiddleware,attachUser, requireAdmin, async (req, res) => {
-    try {
-      const users = await storage.getAllUsers();
-      // Don't return passwords
-      const safeUsers = users.map(user => ({
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        createdAt: user.createdAt,
-      }));
-      res.json(safeUsers);
-    } catch (error) {
-      console.error("Get users error:", error);
-      res.status(500).json({ error: "Failed to get users" });
-    }
-  });
-
-  app.delete("/api/admin/users/:userId", jwtMiddleware, attachUser,requireAdmin, async (req, res) => {
-    try {
-      const userId = parseInt(req.params.userId);
-      
-      // Prevent admin from deleting themselves
-      if (userId === req.user!.id) {
-        return res.status(400).json({ error: "Cannot delete your own account" });
-      }
-      
-      const success = await storage.deleteUser(userId);
-      if (!success) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Delete user error:", error);
-      res.status(500).json({ error: "Failed to delete user" });
-    }
-  });
-
-    app.patch("/api/admin/users/:userId/role", jwtMiddleware, attachUser,requireAdmin, async (req, res) => {
-  try {
-    console.log("Incoming role update request:", {
-      userIdParam: req.params.userId,
-      body: req.body,
-      authenticatedUser: req.user,
-    });
-
-    const userId = parseInt(req.params.userId);
-    const { role } = req.body;
-
-    if (!["user", "admin"].includes(role)) {
-      return res.status(400).json({ error: "Invalid role" });
-    }
-
-    if (userId === req.user!.id && role !== "admin") {
-      return res.status(400).json({ error: "You cannot remove your own admin access" });
-    }
-
-    const updatedUser = await storage.updateUserRole(userId, role);
-
-    if (!updatedUser) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    res.json({
-      id: updatedUser.id,
-      username: updatedUser.username,
-      email: updatedUser.email,
-      role: updatedUser.role,
-      createdAt: updatedUser.createdAt,
-    });
-  } catch (error) {
-    console.error("Update role error:", error);
-    res.status(500).json({ error: "Failed to update user role" });
-  }
-});
-
-
   app.get("/api/admin/documents", jwtMiddleware, attachUser, requireAdmin, async (req, res) => {
     try {
       const documents = await storage.getAllDocuments();
@@ -617,13 +711,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/documents", jwtMiddleware,attachUser, requireAdmin, upload.single("file"), async (req, res) => {
+  app.post("/api/admin/documents", jwtMiddleware, attachUser, requireAdmin, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      // Move file to documents directory
       const documentsDir = "docs";
       if (!fs.existsSync(documentsDir)) {
         fs.mkdirSync(documentsDir, { recursive: true });
@@ -633,7 +726,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const filePath = path.join(documentsDir, fileName);
       fs.renameSync(req.file.path, filePath);
 
-      // Save document record
       const document = await storage.createDocument({
         fileName: req.file.originalname,
         filePath,
@@ -648,7 +740,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/admin/documents/:documentId", jwtMiddleware,attachUser, requireAdmin, async (req, res) => {
+  app.delete("/api/admin/documents/:documentId", jwtMiddleware, attachUser, requireAdmin, async (req, res) => {
     try {
       const documentId = parseInt(req.params.documentId);
       const document = await storage.getDocument(documentId);
@@ -657,12 +749,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Document not found" });
       }
 
-      // Delete file from filesystem
       if (fs.existsSync(document.filePath)) {
         fs.unlinkSync(document.filePath);
       }
 
-      // Delete from storage
       const success = await storage.deleteDocument(documentId);
       if (!success) {
         return res.status(404).json({ error: "Document not found" });
@@ -674,7 +764,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to delete document" });
     }
   });
-
 
   const httpServer = createServer(app);
   return httpServer;

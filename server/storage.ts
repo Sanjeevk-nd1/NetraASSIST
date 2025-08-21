@@ -4,18 +4,24 @@ import {
   users,
   documents,
   processingJobs,
+  conversations,
   chatMessages,
+  generatedFiles,
   type User,
   type InsertUser,
   type Document,
   type InsertDocument,
   type ProcessingJob,
   type InsertProcessingJob,
+  type Conversation,
+  type InsertConversation,
   type ChatMessage,
   type InsertChatMessage,
+  type GeneratedFile,
+  type InsertGeneratedFile,
   type Question,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -42,14 +48,24 @@ export interface IStorage {
   updateQuestions(jobId: number, questions: Question[]): Promise<boolean>;
   updateQuestionAnswer(jobId: number, questionId: string, answer: string): Promise<boolean>;
   acceptQuestion(jobId: number, questionId: string): Promise<boolean>;
+  createConversation(conversation: InsertConversation): Promise<Conversation>;
+  getUserConversations(userId: number): Promise<Conversation[]>;
+  getConversation(id: number): Promise<Conversation | undefined>;
+  updateConversation(id: number, updates: Partial<Conversation>): Promise<Conversation | undefined>;
+  deleteConversation(id: number): Promise<boolean>;
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
-  getUserChatMessages(userId: number): Promise<ChatMessage[]>;
+  getUserChatMessages(userId: number, conversationId?: number): Promise<ChatMessage[]>;
   deleteChatMessage(id: number): Promise<boolean>;
-  clearUserChatHistory(userId: number): Promise<boolean>;
+  clearUserChatHistory(userId: number, conversationId?: number): Promise<boolean>;
+  createGeneratedFile(file: InsertGeneratedFile): Promise<GeneratedFile>;
+  getUserGeneratedFiles(userId: number): Promise<GeneratedFile[]>;
+  getGeneratedFile(id: number): Promise<GeneratedFile | undefined>;
+  deleteGeneratedFile(id: number): Promise<boolean>;
 }
 
 export class PostgresStorage implements IStorage {
   private db: ReturnType<typeof drizzle>;
+  private client: pg.Client;
 
   constructor() {
     const connectionString = process.env.DATABASE_URL;
@@ -59,14 +75,18 @@ export class PostgresStorage implements IStorage {
     }
     console.log("Storage connecting to:", connectionString);
 
-    const client = new Client({ connectionString });
-    client.on("error", (err: Error) => console.error("PostgreSQL client error:", err.message));
+    this.client = new Client({ connectionString });
+    this.client.on("error", (err: Error) => console.error("PostgreSQL client error:", err.message));
 
-    this.db = drizzle(client, { schema: { users, documents, processingJobs, chatMessages } });
-    client.connect().catch(err => {
+    this.db = drizzle(this.client, { schema: { users, documents, processingJobs, conversations, chatMessages, generatedFiles } });
+    this.client.connect().catch(err => {
       console.error("Failed to connect to PostgreSQL in storage.ts:", err.message);
       throw err;
     });
+  }
+
+  async destroy() {
+    await this.client.end();
   }
 
   async getUser(id: number): Promise<User | undefined> {
@@ -195,13 +215,70 @@ export class PostgresStorage implements IStorage {
     return result.length > 0;
   }
 
+  async createConversation(conversation: InsertConversation): Promise<Conversation> {
+    const [newConversation] = await this.db.insert(conversations).values(conversation).returning();
+    return newConversation;
+  }
+
+  async getUserConversations(userId: number): Promise<Conversation[]> {
+    return this.db.select().from(conversations).where(eq(conversations.userId, userId));
+  }
+
+  async getConversation(id: number): Promise<Conversation | undefined> {
+    const result = await this.db.select().from(conversations).where(eq(conversations.id, id)).limit(1);
+    return result[0];
+  }
+
+  async updateConversation(id: number, updates: Partial<Conversation>): Promise<Conversation | undefined> {
+    const [updatedConversation] = await this.db
+      .update(conversations)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(conversations.id, id))
+      .returning();
+    return updatedConversation;
+  }
+
+  async deleteConversation(id: number): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      // Clean up physical files for generated_files
+      const files = await tx.select().from(generatedFiles).where(eq(generatedFiles.conversationId, id));
+      for (const file of files) {
+        try {
+          if (fs.existsSync(file.filePath)) {
+            fs.unlinkSync(file.filePath);
+            console.log(`Deleted file: ${file.filePath}`);
+          }
+        } catch (err) {
+          console.error(`Failed to delete file ${file.filePath}:`, err);
+        }
+      }
+      // Delete conversation (database will cascade to chat_messages and generated_files)
+      const result = await tx.delete(conversations).where(eq(conversations.id, id)).returning();
+      return result.length > 0;
+    });
+  }
+
   async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
     const [newMessage] = await this.db.insert(chatMessages).values(message).returning();
     return newMessage;
   }
 
-  async getUserChatMessages(userId: number): Promise<ChatMessage[]> {
-    return this.db.select().from(chatMessages).where(eq(chatMessages.userId, userId));
+  async getUserChatMessages(userId: number, conversationId?: number): Promise<ChatMessage[]> {
+    if (conversationId) {
+      return this.db
+        .select()
+        .from(chatMessages)
+        .where(and(
+          eq(chatMessages.userId, userId),
+          eq(chatMessages.conversationId, conversationId)
+        ))
+        .orderBy(chatMessages.createdAt);
+    }
+    return this.db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.userId, userId))
+      .orderBy(chatMessages.createdAt);
   }
 
   async deleteChatMessage(id: number): Promise<boolean> {
@@ -209,8 +286,37 @@ export class PostgresStorage implements IStorage {
     return result.length > 0;
   }
 
-  async clearUserChatHistory(userId: number): Promise<boolean> {
+  async clearUserChatHistory(userId: number, conversationId?: number): Promise<boolean> {
+    if (conversationId) {
+      const result = await this.db
+        .delete(chatMessages)
+        .where(and(
+          eq(chatMessages.userId, userId),
+          eq(chatMessages.conversationId, conversationId)
+        ))
+        .returning();
+      return result.length > 0;
+    }
     const result = await this.db.delete(chatMessages).where(eq(chatMessages.userId, userId)).returning();
+    return result.length > 0;
+  }
+
+  async createGeneratedFile(file: InsertGeneratedFile): Promise<GeneratedFile> {
+    const [newFile] = await this.db.insert(generatedFiles).values(file).returning();
+    return newFile;
+  }
+
+  async getUserGeneratedFiles(userId: number): Promise<GeneratedFile[]> {
+    return this.db.select().from(generatedFiles).where(eq(generatedFiles.userId, userId)).orderBy(generatedFiles.createdAt);
+  }
+
+  async getGeneratedFile(id: number): Promise<GeneratedFile | undefined> {
+    const result = await this.db.select().from(generatedFiles).where(eq(generatedFiles.id, id)).limit(1);
+    return result[0];
+  }
+
+  async deleteGeneratedFile(id: number): Promise<boolean> {
+    const result = await this.db.delete(generatedFiles).where(eq(generatedFiles.id, id)).returning();
     return result.length > 0;
   }
 }
