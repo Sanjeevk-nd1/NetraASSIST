@@ -1,0 +1,33 @@
+		
+		
+#	Question 	Netradyne Response
+1	"Detailed description of the service NETRADYNE, INC provides to Quest Diagnostics"	"Netradyne's Driver.i is a state-of-the-art fleet safety system that includes sensors, integrated cameras, and artificial intelligence (AI) processing on the edge to enhance fleet and driver safety. The technology assesses driving behaviours and traffic conditions to identify risky situations, traffic violations, and other road events to promote safer driving habits."
+2	"Data Elements and types involved (Ex: PHI, PII, PCI, Marketing data, Financial data, Quest Intellectual property data, etc.) for the service"	"PII data is processed by Netradyne for providing services to its business customers. The data includes- driver identifiers, images and video footage of the driver, driver greenzone scores, location of the vehicle equipped with Netradyne devices, alerts generated for the driver and greenzone score (driving safety score), vehicle details (vehicle ID, VIN), telematics data"
+3	"How the data is being shared between Quest and NETRADYNE, INC"	"Some data such as driver name, email IDs, may be provided by Quest  to Netradyne.  Netradyne collects data from its driver.i devices fitted on customer vehicles. Customer can see fleet specific and driving session related data on customer portal (IDMS) depending on the access privileges granted to Quest users and the selected privacy modes."
+4	Data hosted/stored location (Own data center/ Any cloud service providers)	Data is hosted on Amazon Web Services (AWS).
+5	Location of hosted data (or datacenters)	The data is hosted on AWS US West.
+6	Retention Period of those data	"Typically video data is retained for 90 days plus the current month, and non-video data is retained for 12 months plus the current month. On-device data is overwritten once the device memory is full (typically data is retained for 200 hours of drive-time) or depending on device configuration."
+7	Sub-contractors involved for the scope of service and whether they have access to Quest data.	"Netradyne engages third-party service providers (TPSPs) to support its services- such as AWS for data hosting. A list of subprocessors is included in the Data Processing Agreement (DPA) and will be provided on request during the contracting phase. 
+Netradyne requires its subcontractors to:
+- Comply with data protection terms equivalent to those in Netradyne’s agreements.
+- Be contractually bound to confidentiality, access control, and data retention standards.
+- Be audited and assessed by Netradyne's InfoSec team. 
+-The Netradyne InfoSec team conducts periodic TPRM assessments on the sub-contractors. Netradyne Legal, IP & Privacy, and Procurement teams are involved in reviewing contracts, NDAs, and compliance terms."
+8	Note from Netradyne on Information Security Aspects at Netradyne	"Thank you for your inquiry regarding Netradyne’s Information Security (InfoSec) program and the technical measures we undertake to safeguard customer interest and sensitive data.
+We have stringent levels of protection to secure our product(s) and underlying infrastructure. Netradyne adopt industry best security practices and is certified with ISO 27001:2022 and ISO 27701 and the same can be shared under NDA on demand.
+
+You may also find the below information on our webpage:
+For Privacy: https://www.netradyne.com/legal/privacy-policy
+For Security: Security | Netradyne
+ 
+We are pleased to provide the following overview of our security practices and assessment maturity: 
+ 
+Our existing controls maturity and security certifications aptly covers the Customer expectations on Information Security front. 
+	 
+Netradyne security controls are managed and governed by Netradyne ISMS policies and guidelines and it also aligned with NIST and CIS Critical Security controls requirements related to Data Protection/privacy, Identity & Access, DevSecOps, Vigilance, Resilience, Network & Infrastructure Security, Risk and Compliance Management.
+	 
+Our solution is a SaaS offering which is hosted on secure, highly available & scalable AWS Infrastructure. User Interface is accessible through browser and mobile application (Supported on Android & iOS) using Https REST APIs, which is the front end of Multi-Tier architecture, DBs are at back end and only accessible though Netradyne internal web API services to fetch the data for the requests. At perimeter and boundary level NGFW are installed which filters the traffic. WAF is also equipped along with IPS/IDS. Netradyne uses enterprise scale Security Solutions and tools providing RBAC & Least Privilege, Network Security, Firewall, UTM, APT, IDS/IPS to protect the systems. It has AES 256-bit encryption for data at rest and backups. It uses SSL/TLS 1.2+ for data in transit.
+ 
+Netradyne is deeply committed to protecting customer-sensitive data through robust internal practices and continuous improvement of its security posture. We employ a layered, proactive approach to threat detection, assessment, and mitigation, supported by internal audit mechanisms and external validations. We are committed to maintain the highest standards. We appreciate customer diligence in reviewing our security posture, and we look forward to addressing any concerns or additional requirements they may have. 
+ 
+Our goal is to establish a partnership built on trust and confidence."

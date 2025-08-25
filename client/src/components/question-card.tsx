@@ -4,19 +4,23 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Question } from "@shared/schema";
-import { Check, RotateCcw, ChevronDown, ChevronUp, Loader2, FileText, Eye } from "lucide-react";
+import { Check, RotateCcw, ChevronDown, ChevronUp, Loader2, FileText, Eye, Edit2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
+import { Textarea } from "@/components/ui/textarea";
 
 interface QuestionCardProps {
   question: Question;
   questionNumber: number;
   onAccept: () => void;
   onRegenerate: () => void;
+  onUpdateAnswer: (id: string, newAnswer: string) => void;
 }
 
-export function QuestionCard({ question, questionNumber, onAccept, onRegenerate }: QuestionCardProps) {
+export function QuestionCard({ question, questionNumber, onAccept, onRegenerate, onUpdateAnswer }: QuestionCardProps) {
   const [isOpen, setIsOpen] = useState(!question.accepted);
   const [showSources, setShowSources] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedAnswer, setEditedAnswer] = useState(question.answer || "");
   const { user } = useAuth();
 
   const getStatusColor = (status: string) => {
@@ -47,6 +51,14 @@ export function QuestionCard({ question, questionNumber, onAccept, onRegenerate 
     if (question.status === "processing") return "Generating...";
     if (question.status === "failed") return "Failed";
     return "Pending Review";
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      setIsEditing(false);
+      onUpdateAnswer(question.id, editedAnswer);
+    }
   };
 
   return (
@@ -81,17 +93,58 @@ export function QuestionCard({ question, questionNumber, onAccept, onRegenerate 
         
         <CollapsibleContent>
           <CardContent className="px-6 pb-6">
-            {/* Question Text */}
             <div className="bg-gray-50 rounded-lg p-4 mb-4">
               <p className="text-gray-700 font-medium">{question.text}</p>
             </div>
             
-            {/* Answer */}
             {question.answer && (
               <div className="bg-blue-50 rounded-lg p-4 mb-4">
-                <p className="text-gray-700 leading-relaxed">{question.answer}</p>
+                {isEditing ? (
+                  <div className="space-y-2">
+                    <Textarea
+                      value={editedAnswer}
+                      onChange={(e) => setEditedAnswer(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      className="w-full min-h-[100px] text-gray-700"
+                      placeholder="Edit the answer..."
+                    />
+                    <div className="flex justify-end space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setIsEditing(false);
+                          setEditedAnswer(question.answer || "");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setIsEditing(false);
+                          onUpdateAnswer(question.id, editedAnswer);
+                        }}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-gray-700 leading-relaxed">{question.answer}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 text-blue-600 hover:bg-blue-50"
+                      onClick={() => setIsEditing(true)}
+                    >
+                      <Edit2 className="h-4 w-4 mr-2" />
+                      Edit Answer
+                    </Button>
+                  </>
+                )}
                 
-                {/* Sources - Admin Only */}
                 {user?.role === "admin" && question.sources && question.sources.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-blue-200">
                     <div className="flex items-center justify-between mb-2">
@@ -107,72 +160,41 @@ export function QuestionCard({ question, questionNumber, onAccept, onRegenerate 
                       >
                         <Eye className="h-3 w-3 mr-1" />
                         <span className="text-xs">
-                          {showSources ? "Hide" : "View"} Sources
+                          {showSources ? "Hide" : "View"}
                         </span>
                       </Button>
                     </div>
-                    
                     {showSources && (
-                      <div className="space-y-2">
-                        {question.sources.map((source, idx) => (
-                          <div key={idx} className="bg-white border border-blue-200 rounded p-2">
-                            <p className="text-xs text-gray-600 leading-relaxed">
-                              {source}
-                            </p>
-                          </div>
+                      <ul className="text-sm text-gray-600 list-disc pl-4">
+                        {question.sources.map((source, index) => (
+                          <li key={index}>{source}</li>
                         ))}
-                      </div>
+                      </ul>
                     )}
                   </div>
                 )}
               </div>
             )}
             
-            {/* Processing State */}
-            {question.status === "processing" && (
-              <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                <div className="flex items-center space-x-2 text-sm text-gray-500">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>AI is generating response...</span>
-                </div>
-              </div>
-            )}
-            
-            {/* Action Buttons */}
             {question.status === "completed" && !question.accepted && (
-              <div className="flex items-center space-x-3">
+              <div className="flex justify-end space-x-3">
                 <Button
-                  onClick={onAccept}
-                  className="bg-success hover:bg-success/90 text-white"
-                >
-                  <Check className="h-4 w-4 mr-2" />
-                  Accept
-                </Button>
-                <Button
-                  onClick={onRegenerate}
                   variant="outline"
-                  className="text-gray-700"
+                  size="sm"
+                  onClick={onRegenerate}
+                  disabled={question.status === "processing"}
                 >
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Regenerate
                 </Button>
-                
-                {/* Sources Button */}
-                {question.sources && question.sources.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-blue-600 hover:bg-blue-50"
-                    onClick={() => {
-                      // Scroll to sources section
-                      const sourcesElement = document.querySelector(`[data-question-id="${question.id}"] .sources-section`);
-                      sourcesElement?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    }}
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    View Sources ({question.sources.length})
-                  </Button>
-                )}
+                <Button
+                  size="sm"
+                  onClick={onAccept}
+                  disabled={question.status === "processing"}
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  Accept
+                </Button>
               </div>
             )}
           </CardContent>

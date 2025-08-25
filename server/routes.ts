@@ -34,6 +34,11 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   next();
 }
 
+// Schema for updating answer
+const updateAnswerSchema = acceptAnswerSchema.extend({
+  answer: signupSchema.shape.password, // Reusing password schema for non-empty string
+});
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Signup
   app.post("/api/auth/signup", async (req, res) => {
@@ -242,6 +247,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Accept all answers
+  app.post("/api/jobs/:jobId/accept-all", jwtMiddleware, async (req, res) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+      const job = await storage.getProcessingJob(jobId);
+      
+      if (!job || !job.questions) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+
+      if (job.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const unacceptedQuestions = job.questions.filter(q => !q.accepted && q.status === "completed");
+      if (unacceptedQuestions.length === 0) {
+        return res.status(400).json({ error: "No unaccepted questions to process" });
+      }
+
+      for (const question of unacceptedQuestions) {
+        await storage.acceptQuestion(jobId, question.id);
+      }
+
+      res.json({ success: true, acceptedCount: unacceptedQuestions.length });
+    } catch (error) {
+      console.error("Accept all answers error:", error);
+      res.status(500).json({ error: "Failed to accept all answers" });
+    }
+  });
+
+  // Update answer
+  app.post("/api/jobs/:jobId/update-answer", jwtMiddleware, async (req, res) => {
+    try {
+      const jobId = parseInt(req.params.jobId);
+      const { questionId, answer } = updateAnswerSchema.parse(req.body);
+      
+      const job = await storage.getProcessingJob(jobId);
+      if (!job) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+
+      if (job.userId !== req.user!.id && req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      const success = await storage.updateQuestionAnswer(jobId, questionId, answer);
+      
+      if (!success) {
+        return res.status(404).json({ error: "Question not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Update answer error:", error);
+      res.status(500).json({ error: "Failed to update answer" });
+    }
+  });
+
   // Regenerate answer
   app.post("/api/jobs/:jobId/regenerate", jwtMiddleware, async (req, res) => {
     try {
@@ -379,7 +442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete conversation
-    app.delete("/api/conversations/:conversationId", jwtMiddleware, async (req, res) => {
+  app.delete("/api/conversations/:conversationId", jwtMiddleware, async (req, res) => {
     try {
       const conversationId = parseInt(req.params.conversationId);
       const conversation = await storage.getConversation(conversationId);

@@ -1,0 +1,120 @@
+Question	SPRINTO Response
+1.1 Name of Vendor (Single selection allowed) *	Netradyne Inc
+1.2 Name of product/service being provided. (Single selection allowed) *	Driveri - a vision-based driver recognition and fleet safety solution.
+1.3 Assessment Respondent Contact Information *	"Frank Lancaster, Enterprise Sales Manager, frank.lancaster@netradyne.com"
+1.4 How long has the company been in business? (Single selection allowed)	Netradyne was founded in 2015.
+1.5 Have you designated an Information Security Officer? (Single selection allowed) *	Yes
+1.6 Please provide their full name and email address. *	
+1.7 Has the role of Chief Privacy Officer been assigned? (Single selection allowed) *	Yes
+1.8 Please provide their full name and email address. *	"Sudhansu Kumar, sudhansu.kumar@Netradyne.com; Vinay Rai, vinay.rai@Netradyne.com; Saravanan Sankaran, saravanan.sankaran@Netradyne.com; Roshan Mathews, roshan.mathews@Netradyne.com"
+2.1 Have you implemented a set of security policies and procedures? (Single selection allowed) *	Yes
+2.2 Which of the following are covered in your security policies and procedures? Check all that apply. (Multiple selections allowed) (Justification allowed) (Allows other) *	"Netradyne's security policies and procedures cover Information Security, Change Management, Incident Management, Access Control, Data Protection/Privacy, Identity & Access, DevSecOps, Vigilance, Resilience, Network & Infrastructure Security, Risk and Compliance Management."
+2.3 Do the products and/or services specified in the scope of this assessment fall within the scope of the BCP/BRP/DRP? (Single selection allowed) (Justification allowed) *	"Yes, the products and services specified fall within the scope of the Business Continuity Plan (BCP) and Disaster Recovery Plan (DRP) as they are part of Netradyne's production infrastructure and managed services, which are covered by these plans."
+2.4 What is the Recovery Time Objective (RTO) for the product/service? (Single selection allowed) (Justification allowed) *	"Netradyne takes database backups every 4 hours, and retains them for 4 days, allowing point-in-time recovery to any point in the last 4 days."
+"2.5 In the event of data loss, how quickly does the vendor notify potentially affected organizations? (Single selection allowed) (Justification allowed) *"	Within 72 hours
+2.6 Which of the following are covered in your company's Human Resource policies? (Multiple selections allowed) (Justification allowed) (Allows other) *	
+2.7 Which of the following trainings are required for employees? Check all that apply. (Multiple selections allowed) *	"Netradyne employees undergo extensive training programs covering technical/core, business, and soft skills, enabling client readiness from day one. Netradyne's personnel and partners are provided cybersecurity awareness education and are adequately trained to perform their information security-related duties and responsibilities consistent with related policies, procedures, and agreements."
+3.1 Does your organization audit for compliance with security policies and procedures? (Single selection allowed) *	Yes
+3.2 Please provide the name and email address of the person in charge of this process. *	
+3.3 Have you had an external party perform a security audit or assessment within the last two years?  (Single selection allowed) *	Yes
+3.4 Who conducted the external security audit? *	The external security audit was conducted by third-party organizations specializing in application security.
+3.5 Does your organization review and audit third party services? (Single selection allowed) (Justification allowed) *	"Yes, Netradyne reviews and audits third-party services as part of its vendor management and risk assessment processes."
+3.6 Has your company established processes and formal agreements for third party service providers to provide immediate notification in the event of a disruption that impacts delivery of the products and/or services they provide? (Single selection allowed) (Justification allowed) *	"Yes, Netradyne has established processes and formal agreements with third-party service providers to ensure immediate notification in the event of a disruption that impacts the delivery of products and/or services they provide."
+4.1 What is the procedure for handling and disposing of customer data if/when the contract expires? *	"Netradyne follows a secure disposal policy which includes encrypting the entire hard disk, securely deleting all information using software solutions, and physically destroying the device through methods such as incineration or shredding."
+"4.2 Is scoped data of minors collected, transmitted, processed, disclosed, or stored that can be classified under the Children's Online Privacy Protection Act (COPPA)?  (Single selection allowed) (Justification allowed) *"	No
+"4.3 Is scoped data collected, accessed, transmitted, processed, disclosed or retained that can be classified as Cardholder Data (CHD) within a Cardholder Data Environment (CDE) for credit card processing?  (Single selection allowed) *"	Yes
+4.4 Do you transmit electronic data with EU third parties? (Single selection allowed) (Justification allowed) *	"Yes, Netradyne engages third parties such as AWS for data hosting and Concentrix (India) for customer support, which involves data transmission to EU third parties."
+4.5 What data is transmitted? *	"Video footage, sensor data, and Driver details uploaded from Driveri devices and customer systems."
+4.6 Which of the following legal requirements are you in compliance with? Check all that apply. (Multiple selections allowed) (Justification allowed) *	Netradyne complies with GDPR requirements as indicated by their Data Processing Agreements with third parties.
+5.1 Are all of your operations conducted from one facility?  (Single selection allowed) *	No
+5.2 Please provide a list of other facilities along with points of contact at each site.	
+5.3 Are all your servers and applications located on your internal network?  (Single selection allowed) *	No
+5.4 Where are they located? *	The data centers are located within the USA.
+"5.5 Does your organization use a third party to host services or applications (i.e., ASP)? (Single selection allowed) (Justification allowed) *"	"Yes, the organization uses AWS as a third party to host services."
+5.6 Which third parties do you use? *	"Netradyne engages third parties such as AWS for data hosting, Concentrix (India) for customer support, and eLancer (India) for data labeling."
+5.7 Is restricted or confidential scoped data stored electronically? (Single selection allowed) (Justification allowed) *	"Yes, restricted or confidential scoped data is stored electronically."
+"5.8 Is scoped data aggregated, appended, or modeled using data analytics?  (Single selection allowed) (Justification allowed) *"	"Yes, scoped data is aggregated and modeled using data analytics for internal training and model improvements for feature enhancements."
+"5.9 Do you have controls on host systems to protect against viruses, spyware, Trojan horses, and unauthorized access?  (Single selection allowed) (Justification allowed) *"	"Yes, there are controls on host systems to protect against viruses, spyware, Trojan horses, and unauthorized access."
+5.10 Please list the products you use. *	"The Driveri hardware, Driveri service and feature sets depending on subscriber plans and territory."
+5.11 Do you review the configuration and validate the operational status of your security software at least annually? (Single selection allowed) (Justification allowed) *	"Yes, the configuration and operational status of security software are reviewed at least annually."
+"5.12 Are information security requirements specified and implemented when new systems are introduced, upgraded, or enhanced? (Single selection allowed) (Justification allowed) *"	"Yes, information security requirements are specified and implemented when new systems are introduced, upgraded, or enhanced."
+"5.13 Are new, upgraded or enhanced systems required to include a determination of security requirements based on the sensitivity of the data? (Single selection allowed) (Justification allowed) *"	"Yes, new, upgraded, or enhanced systems are required to include a determination of security requirements based on the sensitivity of the data."
+5.14 Do you have a security incident/data breach reporting process? (Single selection allowed) (Justification allowed) *	"Yes, Netradyne has a security incident/data breach reporting process in place. The process involves immediate reporting of potential breaches to the designated Privacy Officer or Information Security Officer, followed by an assessment and investigation to determine the occurrence and extent of the breach. Notifications are then sent to affected individuals and regulatory authorities as required."
+5.15 How often are security incidents reviewed with management? (Single selection allowed) (Justification allowed) *	Security incidents are reviewed with management at least annually and whenever significant changes occur in the organization.
+"5.16 Does management restrict the use of information systems by type of user (employee, contractor, third party)? (Single selection allowed) (Justification allowed) *"	"Yes, management restricts the use of information systems by type of user. Access is controlled based on the principle of 'least privilege' and 'need-to-know'."
+"5.17 Is there a formal procedure for removing access rights for a terminated employee, consultant, contractor, or authorized third party? (Single selection allowed) (Justification allowed) *"	"Yes, there is a formal procedure for removing access rights for terminated employees, consultants, contractors, or authorized third parties. Access lists are reviewed quarterly to ensure that employees have only the necessary access to do their job."
+5.18 Do you employ encryption to protect sensitive data? (Single selection allowed) (Justification allowed) *	"Yes, encryption is employed to protect sensitive data. Data at rest is encrypted using AES 256-bit, and data in transit is encrypted using SSL/TLS."
+5.19 Do you require encryption of all computers that normally operate off-premises? (Single selection allowed) (Justification allowed) *	"Yes, encryption is required for all computers that normally operate off-premises. Company laptops are encrypted as outlined in the Endpoint Security Policy."
+"5.20 If an employee is using a mobile device for work purposes, do you require employees to use company owned mobile devices instead of their personal devices? (Single selection allowed) (Justification allowed) *"	"Yes, personally owned computing or mobile devices and phones are never connected to the company network or to workstations unless authorized by the NETRADYNE IT Operations and Security team."
+5.21 Are they required to be connected to a VPN? (Single selection allowed) *	"Yes, Netradyne uses OpenVPN for secure remote access, and access is granted based on approval."
+5.22 Does your company perform scans on incoming and outgoing emails for phishing prevention? (Single selection allowed) *	
+5.23 Have you implemented a system timeout after a period of inactivity? (Single selection allowed) (Justification allowed) *	"Yes, inactive sessions are shut down after a defined period of inactivity where feasible, and session time-out requirements are implemented for all critical systems as feasible and applicable."
+6.1 What type of software will the company be providing Medline Industries as part of this service? (Multiple selections allowed) (Justification allowed) *	DriverI is a SaaS solution offering which is hosted on AWS Infrastructure. User Interface is accessible through browser and mobile application (Supported on Android & iOS) using Https REST APIs.
+"6.2 Is open source software or libraries used to transmit, process or store scoped data?  (Single selection allowed) (Justification allowed) *"	Mobile applications are developed in-house and follow the standard SDLC practices of design review and code review before pushing to Github.
+6.3 What cloud deployment models are provided as part of this service? (Multiple selections allowed) *	DriverI is a SaaS solution offering which is hosted on AWS Infrastructure.
+"6.4 Is a website supported, hosted or maintained that has access to scoped systems and data?  (Single selection allowed) (Justification allowed) *"	DriverI is a SaaS solution offering which is hosted on AWS Infrastructure. User Interface is accessible through browser and mobile application (Supported on Android & iOS) using Https REST APIs.
+6.5 Does your company have an SDLC policy? (Single selection allowed) (Justification allowed) *	"Yes, the company has an SDLC policy that outlines the stages and processes for software development, ensuring compliance with security and privacy standards."
+"6.6 Has the SDLC policy  been approved by management, communicated to appropriate employees and assigned an owner to maintain and review the policy?  (Single selection allowed) (Justification allowed) *"	"Yes, the SDLC policy has been approved by management, communicated to appropriate employees, and assigned an owner to maintain and review the policy."
+6.7 Does the SDLC process include communicating known un-remediated vulnerabilities to the Security Monitoring and Response group for awareness and monitoring?  (Single selection allowed) (Justification allowed) *	"Yes, the SDLC process includes communicating known un-remediated vulnerabilities to the Security Monitoring and Response group for awareness and monitoring."
+6.8 Does the SDLC process include specific steps to ensure that information security requirements are incorporated into the design? (Single selection allowed) (Justification allowed) *	"Yes, the SDLC process includes specific steps to ensure that information security requirements are incorporated into the design. This involves threat modeling, secure architecture, code reviews, and adherence to security by design principles."
+"6.9 Does the SDLC process include specific steps to ensure that privacy requirements are incorporated into the design (aka, Privacy by Design)? (Single selection allowed) (Justification allowed) *"	"Yes, the SDLC process includes specific steps to ensure that privacy requirements are incorporated into the design, following the Privacy by Design principles. This includes conducting privacy impact assessments, implementing data minimization practices, and embedding privacy considerations into the design and architecture of products and services."
+6.10 Are backups of scoped systems and data performed?  (Single selection allowed) *	Yes
+6.11 Are backup integrity and related restoration procedures tested at least annually?  (Single selection allowed) *	Yes
+6.12 Are backup and replication errors reviewed and resolved as required?  (Single selection allowed) *	Yes
+6.13 Do secure code reviews include regular analysis of vulnerabilities?  (Single selection allowed) *	Yes
+6.14 Are identified security vulnerabilities remediated prior to promotion to production?  (Single selection allowed) *	Yes
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

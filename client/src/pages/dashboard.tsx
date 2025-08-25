@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,28 +20,47 @@ import {
   Download,
   Bolt,
   User,
-  History
+  History,
+  Check
 } from "lucide-react";
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const [jobId, setJobId] = useState<number | null>(null);
+  const [acceptAllClicked, setAcceptAllClicked] = useState(false);
+  const exportSectionRef = useRef<HTMLDivElement>(null);
   const { 
     job, 
     isLoading, 
     generateAnswers, 
     acceptAnswer, 
+    acceptAllAnswers,
     regenerateAnswer,
+    updateAnswer,
     isGenerating 
   } = useFileProcessing(jobId);
 
   const handleFileUploaded = (newJobId: number) => {
     setJobId(newJobId);
+    setAcceptAllClicked(false); // Reset acceptAllClicked for new job
   };
 
   const handleGenerateAnswers = async () => {
     if (jobId) {
       await generateAnswers();
+    }
+  };
+
+  const handleAcceptAll = async () => {
+    if (jobId) {
+      await acceptAllAnswers();
+      setAcceptAllClicked(true);
+    }
+  };
+
+  const handleExportScroll = () => {
+    if (exportSectionRef.current) {
+      exportSectionRef.current.scrollIntoView({ behavior: "smooth" });
     }
   };
 
@@ -153,12 +172,23 @@ export default function Dashboard() {
                             <span className="font-medium text-success">{acceptedCount}</span> accepted, 
                             <span className="font-medium text-warning ml-1">{pendingCount}</span> pending
                           </div>
-                          {allQuestionsAccepted && (
+                          {(pendingCount > 0 || allQuestionsAccepted) && (
                             <Button
+                              onClick={allQuestionsAccepted ? handleExportScroll : handleAcceptAll}
                               className="bg-success hover:bg-success/90 text-white"
+                              disabled={pendingCount === 0 && !allQuestionsAccepted}
                             >
-                              <Download className="h-4 w-4 mr-2" />
-                              Export Results
+                              {allQuestionsAccepted ? (
+                                <>
+                                  <Download className="h-4 w-4 mr-2" />
+                                  Export Results
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="h-4 w-4 mr-2" />
+                                  Accept All
+                                </>
+                              )}
                             </Button>
                           )}
                         </div>
@@ -174,12 +204,15 @@ export default function Dashboard() {
                         questionNumber={index + 1}
                         onAccept={() => acceptAnswer(question.id)}
                         onRegenerate={() => regenerateAnswer(question.id)}
+                        onUpdateAnswer={(questionId, answer) => updateAnswer({ questionId, answer })}
                       />
                     ))}
                   </div>
 
                   {allQuestionsAccepted && job && (
-                    <ExportSection jobId={job.id} />
+                    <div ref={exportSectionRef}>
+                      <ExportSection jobId={job.id} />
+                    </div>
                   )}
                 </div>
               )}

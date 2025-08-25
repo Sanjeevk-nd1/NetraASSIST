@@ -17,7 +17,6 @@ export function useFileProcessing(jobId: number | null) {
     },
     enabled: !!jobId,
     refetchInterval: (data) => {
-      // Refetch every 2 seconds if still processing
       return data?.status === "processing" ? 2000 : false;
     },
   });
@@ -70,6 +69,29 @@ export function useFileProcessing(jobId: number | null) {
     },
   });
 
+  // Accept all answers mutation
+  const acceptAllAnswersMutation = useMutation({
+    mutationFn: async () => {
+      if (!jobId) throw new Error("No job ID");
+      const response = await apiRequest("POST", `/api/jobs/${jobId}/accept-all`);
+      return response.json();
+    },
+    onSuccess: (data: { success: boolean; acceptedCount: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs", jobId] });
+      toast({
+        title: "All Answers Accepted",
+        description: `${data.acceptedCount} answers have been approved.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Accept All Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Regenerate answer mutation
   const regenerateAnswerMutation = useMutation({
     mutationFn: async (questionId: string) => {
@@ -95,12 +117,40 @@ export function useFileProcessing(jobId: number | null) {
     },
   });
 
+  // Update answer mutation
+  const updateAnswerMutation = useMutation({
+    mutationFn: async ({ questionId, answer }: { questionId: string; answer: string }) => {
+      if (!jobId) throw new Error("No job ID");
+      const response = await apiRequest("POST", `/api/jobs/${jobId}/update-answer`, {
+        questionId,
+        answer,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs", jobId] });
+      toast({
+        title: "Answer Updated",
+        description: "The answer has been successfully updated.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Update Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   return {
     job,
     isLoading,
     generateAnswers: generateAnswersMutation.mutate,
     isGenerating: generateAnswersMutation.isPending,
     acceptAnswer: acceptAnswerMutation.mutate,
+    acceptAllAnswers: acceptAllAnswersMutation.mutate,
     regenerateAnswer: regenerateAnswerMutation.mutate,
+    updateAnswer: updateAnswerMutation.mutate,
   };
 }
