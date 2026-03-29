@@ -1,0 +1,37 @@
+# Build artifacts
+frontend/dist/
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Dev files
+.replit
+.local/
+.agents/
+attached_assets/
+LOCAL_SETUP.md
+uv.lock
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# User data (will be mounted as volumes)
+backend/uploads/*
+backend/downloads/*
+pgdata/

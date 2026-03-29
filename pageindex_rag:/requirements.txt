@@ -1,0 +1,10 @@
+openai
+langgraph
+sqlalchemy
+psycopg2-binary
+msal
+requests
+python-docx
+pandas
+openpyxl
+python-dotenv
