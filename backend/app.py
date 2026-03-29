@@ -20,8 +20,11 @@ from backend.config import Config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Resolve frontend dist directory (works both locally and in Docker)
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'dist')
+
 def create_app():
-    app = Flask(__name__, static_folder='../frontend/dist', static_url_path='')
+    app = Flask(__name__, static_folder=None)
 
     jwt_secret = os.environ.get('JWT_SECRET_KEY', '') or os.environ.get('JWT_SECRET', '')
     if not jwt_secret:
@@ -79,13 +82,14 @@ def create_app():
     app.register_blueprint(admin_bp)
     app.register_blueprint(docprocess_bp)
 
-    @app.route('/')
+    @app.route('/', defaults={'path': ''})
     @app.route('/<path:path>')
-    def serve_frontend(path=''):
-        static_folder = app.static_folder
-        if path and os.path.exists(os.path.join(static_folder, path)):
-            return send_from_directory(static_folder, path)
-        return send_from_directory(static_folder, 'index.html')
+    def serve_frontend(path):
+        # Serve actual files (JS, CSS, images) from the built frontend
+        if path and os.path.isfile(os.path.join(FRONTEND_DIST, path)):
+            return send_from_directory(FRONTEND_DIST, path)
+        # Everything else → index.html (React Router handles client-side routing)
+        return send_from_directory(FRONTEND_DIST, 'index.html')
 
     init_db()
     logger.info("Database initialized successfully")
