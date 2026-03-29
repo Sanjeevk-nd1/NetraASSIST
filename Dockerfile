@@ -35,10 +35,9 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 RUN mkdir -p backend/uploads backend/downloads
 
 ENV PORT=3002
-EXPOSE 3002
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/api/auth/me || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -sf -o /dev/null -w '%{http_code}' http://localhost:${PORT}/api/auth/me | grep -qE '(200|401)' || exit 1
 
 # Default: run gunicorn (Celery runs as a separate container via docker-compose)
 CMD ["sh", "-c", "gunicorn --workers ${GUNICORN_WORKERS:-4} --threads ${GUNICORN_THREADS:-4} --bind 0.0.0.0:${PORT:-3002} --timeout 120 --keep-alive 5 --access-logfile - --error-logfile - backend.app:app"]
