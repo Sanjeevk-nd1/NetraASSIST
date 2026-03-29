@@ -40,4 +40,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -sf -o /dev/null -w '%{http_code}' http://localhost:${PORT}/api/auth/me | grep -qE '(200|401)' || exit 1
 
 # Default: run gunicorn (Celery runs as a separate container via docker-compose)
-CMD ["sh", "-c", "gunicorn --workers ${GUNICORN_WORKERS:-2} --threads ${GUNICORN_THREADS:-2} --bind 0.0.0.0:${PORT:-3002} --timeout 120 --keep-alive 5 --preload --access-logfile - --error-logfile - backend.app:app"]
+CMD ["sh", "-c", "gunicorn --workers ${GUNICORN_WORKERS:-1} --threads ${GUNICORN_THREADS:-2} --bind 0.0.0.0:${PORT:-3002} --timeout 120 --keep-alive 5 --preload --access-logfile - --error-logfile - backend.app:app"]

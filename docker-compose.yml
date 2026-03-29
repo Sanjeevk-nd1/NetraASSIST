@@ -11,6 +11,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    command: postgres -c shared_buffers=64MB -c work_mem=4MB -c maintenance_work_mem=32MB -c effective_cache_size=128MB
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U netraassist"]
       interval: 10s
@@ -21,6 +26,11 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          memory: 96M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -41,6 +51,10 @@ services:
     volumes:
       - uploads:/app/backend/uploads
       - downloads:/app/backend/downloads
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     depends_on:
       db:
         condition: service_healthy
@@ -54,7 +68,7 @@ services:
     command: >
       celery -A backend.celery_app worker
       --queues=batch
-      --concurrency=${DOC_PROCESS_MAX_WORKERS:-2}
+      --concurrency=${DOC_PROCESS_MAX_WORKERS:-1}
       --loglevel=info
       --without-heartbeat
       --without-mingle
@@ -66,6 +80,10 @@ services:
     volumes:
       - uploads:/app/backend/uploads
       - downloads:/app/backend/downloads
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     depends_on:
       db:
         condition: service_healthy
