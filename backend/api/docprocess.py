@@ -397,6 +397,10 @@ def get_job(batch_id):
 @docprocess_bp.route("/api/docprocess/jobs/<batch_id>/process", methods=["POST"])
 @jwt_required()
 def process_job(batch_id):
+    from backend.services.rag_service import has_indexed_documents
+    if not has_indexed_documents():
+        return jsonify({"error": "No knowledge base documents are indexed. Please configure SharePoint sync and index documents in the Admin panel before processing."}), 400
+
     user_id = get_jwt_identity()
     db = SessionLocal()
     try:

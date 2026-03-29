@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 
 from backend.database import SessionLocal
-from backend.services.rag_service import chat_answer_question
+from backend.services.rag_service import chat_answer_question, has_indexed_documents
 from backend.api.auth import log_audit
 
 chat_bp = Blueprint('chat', __name__)
@@ -150,6 +150,8 @@ def chat():
 
         try:
             answer = chat_answer_question(question, conversation_history)
+            if not has_indexed_documents():
+                answer = "**⚠️ No knowledge base documents are indexed.** Responses are based on general AI knowledge only, not your organization's data. Please configure SharePoint sync in the Admin panel.\n\n---\n\n" + answer
         except Exception as e:
             answer = f"I apologize, but I encountered an error processing your question. Please try again. Error: {str(e)}"
 

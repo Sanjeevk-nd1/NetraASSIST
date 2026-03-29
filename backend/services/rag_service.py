@@ -78,6 +78,25 @@ MAX_FTS_SECTIONS = 10
 USE_LLM_TREE_ROUTING = os.environ.get("PAGEINDEX_LLM_TREE_ROUTING", "false").lower() == "true"
 RESPONSE_CACHE_ENABLED = False
 
+
+def has_indexed_documents() -> bool:
+    """Check whether at least one non-deleted document with indexed sections exists."""
+    db = SessionLocal()
+    try:
+        row = db.execute(text("""
+            SELECT EXISTS(
+                SELECT 1 FROM documents d
+                JOIN sections s ON s.document_id = d.id
+                WHERE d.is_deleted = false
+                LIMIT 1
+            )
+        """)).scalar()
+        return bool(row)
+    except Exception:
+        return False
+    finally:
+        db.close()
+
 STOPWORDS = frozenset({
     "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
     "have", "has", "had", "do", "does", "did", "will", "would", "could",
