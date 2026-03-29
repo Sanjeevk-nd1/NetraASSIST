@@ -19,8 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Python deps
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir .
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # App code
 COPY backend/ ./backend/
