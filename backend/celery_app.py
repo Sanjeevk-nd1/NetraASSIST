@@ -42,9 +42,9 @@ celery.conf.update(
     worker_prefetch_multiplier=1,
     # Task result expiry (1 hour)
     result_expires=3600,
-    # Rate limit per-task (applied per worker)
-    # Prevents a single user from monopolising the LLM
-    task_default_rate_limit="30/m",
+    # No rate limit — LLM calls are already bounded by concurrency.
+    # Rate limiting adds queue delays that make batch processing feel stuck.
+    task_default_rate_limit=None,
     # Late ack — only acknowledge a task AFTER it completes, so if worker dies
     # the task goes back to the queue automatically
     task_acks_late=True,

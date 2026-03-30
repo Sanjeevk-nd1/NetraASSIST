@@ -239,15 +239,15 @@ def _refresh_and_maybe_finalize(db, batch_id):
 
 def dispatch_batch(batch_id):
     """Enqueue all pending/error/canceled questions in a batch as individual Celery tasks."""
-    # Pre-check: verify at least one Celery worker is alive (short timeout to avoid blocking)
+    # Pre-check: verify at least one Celery worker is alive
     try:
-        ping = celery.control.inspect(timeout=1.0).ping()
+        ping = celery.control.inspect(timeout=3.0).ping()
         if not ping:
             raise RuntimeError("No Celery workers available. Please start the worker process.")
     except RuntimeError:
         raise
     except Exception as e:
-        raise RuntimeError(f"Cannot connect to task queue: {e}")
+        logger.warning("Celery ping failed (may still work): %s", e)
 
     db = SessionLocal()
     try:
