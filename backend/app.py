@@ -183,13 +183,16 @@ def _create_default_admin():
         """), {"email": admin_email}).fetchone()
 
         if existing:
+            # Always sync password from env so .env credentials are authoritative
+            password_hash = bcrypt.hashpw(admin_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             db.execute(text("""
                 UPDATE users
                 SET role = 'super_admin',
                     is_active = true,
-                    full_name = 'Super Admin'
+                    full_name = 'Super Admin',
+                    password_hash = :pw
                 WHERE id = :id
-            """), {"id": existing[0]})
+            """), {"id": existing[0], "pw": password_hash})
             db.commit()
             logger.info("Super admin account verified.")
         else:

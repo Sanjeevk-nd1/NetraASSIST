@@ -66,9 +66,9 @@ def process_question(self, question_id, batch_id):
             logger.info("Question %s already claimed/done, skipping", question_id)
             return {"status": "skipped"}
 
-        # Call the RAG pipeline
+        # Call the RAG pipeline (use_cache=True: skip LLM if same question was answered before)
         started = time.perf_counter()
-        result = answer_question_with_sources(claimed["question"], use_cache=False)
+        result = answer_question_with_sources(claimed["question"], use_cache=True)
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         # Re-check cancel AFTER the LLM call — if canceled mid-flight, honor it
@@ -239,14 +239,14 @@ def _refresh_and_maybe_finalize(db, batch_id):
 
 def dispatch_batch(batch_id):
     """Enqueue all pending/error/canceled questions in a batch as individual Celery tasks."""
-    # Pre-check: verify at least one Celery worker is alive
+    # Pre-check: verify at least one Celery worker is alive (short timeout to avoid blocking)
     try:
-        ping = celery.control.inspect().ping()
+        ping = celery.control.inspect(timeout=1.0).ping()
         if not ping:
             raise RuntimeError("No Celery workers available. Please start the worker process.")
+    except RuntimeError:
+        raise
     except Exception as e:
-        if "No Celery workers" in str(e):
-            raise
         raise RuntimeError(f"Cannot connect to task queue: {e}")
 
     db = SessionLocal()

@@ -68,7 +68,7 @@ services:
     command: >
       celery -A backend.celery_app worker
       --queues=batch
-      --concurrency=${DOC_PROCESS_MAX_WORKERS:-1}
+      --concurrency=${DOC_PROCESS_MAX_WORKERS:-2}
       --loglevel=info
       --without-heartbeat
       --without-mingle

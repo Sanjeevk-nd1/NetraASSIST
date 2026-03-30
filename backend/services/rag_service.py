@@ -76,7 +76,7 @@ MAX_SELECTED_DOCS = 6
 MAX_SELECTED_NODES = 12
 MAX_FTS_SECTIONS = 10
 USE_LLM_TREE_ROUTING = os.environ.get("PAGEINDEX_LLM_TREE_ROUTING", "false").lower() == "true"
-RESPONSE_CACHE_ENABLED = False
+RESPONSE_CACHE_ENABLED = os.environ.get("RESPONSE_CACHE_ENABLED", "true").lower() == "true"
 
 
 def has_indexed_documents() -> bool:
@@ -607,18 +607,37 @@ def _merge_sections(tree_sections: List[Dict], fts_sections: List[Dict]) -> List
 
 
 def pageindex_retrieve(question: str) -> Dict:
+    import time as _time
+
+    t0 = _time.perf_counter()
+
     # 1. Direct FTS search on section content (uses GIN index)
     fts_sections = _fts_search_sections(question)
+    t1 = _time.perf_counter()
 
     # 2. Original tree-based retrieval
     candidates = _document_candidates(question)
+    t2 = _time.perf_counter()
+
     doc_ids = _llm_select_documents(question, candidates) if USE_LLM_TREE_ROUTING else [doc["id"] for doc in candidates[:MAX_SELECTED_DOCS]]
+    t3 = _time.perf_counter()
+
     sections = _load_sections_for_docs(doc_ids)
+    t4 = _time.perf_counter()
+
     selected_node_ids = _llm_select_nodes(question, sections) if USE_LLM_TREE_ROUTING else _heuristic_select_nodes(question, sections)
+    t5 = _time.perf_counter()
+
     tree_sections = _expand_selected_sections(sections, selected_node_ids)
 
     # 3. Merge: FTS results (highly relevant) + tree results (structurally relevant)
     merged = _merge_sections(tree_sections, fts_sections)
+
+    logger.info(
+        "RETRIEVE | fts=%.1fs doc_candidates=%.1fs doc_select=%.1fs load_sections=%.1fs node_select=%.1fs total=%.1fs | q='%s'",
+        t1 - t0, t2 - t1, t3 - t2, t4 - t3, t5 - t4, _time.perf_counter() - t0,
+        question[:80],
+    )
 
     return {
         "sections": merged,

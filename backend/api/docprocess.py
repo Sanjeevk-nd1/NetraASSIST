@@ -258,17 +258,22 @@ def upload_excel():
                 "updated_at": datetime.utcnow(),
             })
 
-            for idx, (sheet_name, question) in enumerate(all_questions):
-                db.execute(text("""
-                    INSERT INTO batch_questions (id, batch_id, row_index, question, status, sheet_name)
-                    VALUES (:id, :batch_id, :row_index, :question, 'pending', :sheet_name)
-                """), {
+            # Batch insert all questions at once for speed
+            question_rows = [
+                {
                     "id": str(uuid.uuid4()),
                     "batch_id": batch_id,
                     "row_index": idx,
                     "question": question,
                     "sheet_name": sheet_name,
-                })
+                }
+                for idx, (sheet_name, question) in enumerate(all_questions)
+            ]
+            if question_rows:
+                db.execute(text("""
+                    INSERT INTO batch_questions (id, batch_id, row_index, question, status, sheet_name)
+                    VALUES (:id, :batch_id, :row_index, :question, 'pending', :sheet_name)
+                """), question_rows)
 
             db.commit()
             log_audit(user_id, None, "excel_uploaded", "batch_job", batch_id, f"File: {file.filename}, Questions: {len(all_questions)}, Sheets: {len(raw_sheets)}")
@@ -344,13 +349,29 @@ def get_job(batch_id):
         if not job:
             return jsonify({"error": "Job not found"}), 404
 
-        questions = db.execute(text("""
-            SELECT id, row_index, question, answer, sources, status, cached, llm_model,
-                   retrieval_strategy, latency_ms, error_details, sheet_name
-            FROM batch_questions
-            WHERE batch_id = :batch_id
-            ORDER BY row_index ASC
-        """), {"batch_id": batch_id}).mappings().all()
+        # Pagination: ?page=1&per_page=50 (default: all)
+        page = request.args.get("page", type=int)
+        per_page = request.args.get("per_page", 50, type=int)
+        per_page = min(per_page, 200)  # cap
+
+        if page and page > 0:
+            offset = (page - 1) * per_page
+            questions = db.execute(text("""
+                SELECT id, row_index, question, answer, sources, status, cached, llm_model,
+                       retrieval_strategy, latency_ms, error_details, sheet_name
+                FROM batch_questions
+                WHERE batch_id = :batch_id
+                ORDER BY row_index ASC
+                LIMIT :limit OFFSET :offset
+            """), {"batch_id": batch_id, "limit": per_page, "offset": offset}).mappings().all()
+        else:
+            questions = db.execute(text("""
+                SELECT id, row_index, question, answer, sources, status, cached, llm_model,
+                       retrieval_strategy, latency_ms, error_details, sheet_name
+                FROM batch_questions
+                WHERE batch_id = :batch_id
+                ORDER BY row_index ASC
+            """), {"batch_id": batch_id}).mappings().all()
 
         raw_cols = job["detected_columns"]
         if isinstance(raw_cols, str):
@@ -361,7 +382,7 @@ def get_job(batch_id):
         else:
             detected_cols = raw_cols or {}
 
-        return jsonify({
+        result = {
             "id": str(job["id"]),
             "filename": job["original_filename"],
             "status": job["status"],
@@ -389,7 +410,12 @@ def get_job(batch_id):
                 "error_details": question["error_details"],
                 "sheet_name": question["sheet_name"] or "Sheet1",
             } for question in questions],
-        })
+        }
+        if page and page > 0:
+            result["page"] = page
+            result["per_page"] = per_page
+
+        return jsonify(result)
     finally:
         db.close()
 
