@@ -36,10 +36,15 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [clickCount, setClickCount] = useState(0);
-  const { login, ssoLogin } = useAuth();
+  const { user, login, ssoLogin } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const { instance } = useMsal();
   const navigate = useNavigate();
+
+  // If already authenticated (e.g. after SSO redirect), go to home
+  useEffect(() => {
+    if (user) navigate('/', { replace: true });
+  }, [user, navigate]);
 
   const handleSsoLogin = async () => {
     setError('');
