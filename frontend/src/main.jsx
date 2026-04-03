@@ -8,10 +8,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import './index.css';
 
-msalInstance.initialize().then(() => {
-  // Process auth code from redirect (handles popup-blocked scenarios)
-  return msalInstance.handleRedirectPromise();
-}).then(() => {
+function renderApp() {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
       <MsalProvider instance={msalInstance}>
@@ -25,4 +22,30 @@ msalInstance.initialize().then(() => {
       </MsalProvider>
     </React.StrictMode>
   );
+}
+
+msalInstance.initialize().then(() => {
+  return msalInstance.handleRedirectPromise();
+}).then(async (response) => {
+  if (response?.idToken) {
+    // Redirect SSO completed — exchange token with backend
+    try {
+      const res = await fetch('/api/auth/sso', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token: response.idToken }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem('refresh_token', data.refresh_token);
+      }
+    } catch (e) {
+      // Backend call failed — user will see login page
+    }
+  }
+  renderApp();
+}).catch(() => {
+  // Always render the app even if MSAL fails
+  renderApp();
 });
