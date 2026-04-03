@@ -255,7 +255,7 @@ def _verify_ms_token(token_str):
 def sso_login():
     """Authenticate user via Microsoft SSO ID token."""
     data = request.get_json()
-    if not data or not data.get('token'):
+    if not data or not data.get('id_token'):
         return jsonify({"error": "Microsoft token is required"}), 400
 
     ms_sso_enabled = os.environ.get("MS_SSO_ENABLED", "true").lower() == "true"
@@ -263,7 +263,7 @@ def sso_login():
         return jsonify({"error": "SSO is not enabled"}), 403
 
     try:
-        claims = _verify_ms_token(data['token'])
+        claims = _verify_ms_token(data['id_token'])
     except Exception as exc:
         logger.warning("SSO token verification failed: %s", exc)
         return jsonify({"error": "Invalid Microsoft token. Please try again."}), 401

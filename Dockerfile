@@ -3,6 +3,7 @@ FROM node:20-alpine AS frontend-build
 
 ARG VITE_MS_SSO_CLIENT_ID
 ARG VITE_MS_SSO_TENANT_ID
+ARG VITE_MS_SSO_REDIRECT
 
 WORKDIR /app
 COPY package.json ./

@@ -45,7 +45,17 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const result = await instance.loginPopup(loginRequest);
+      let result;
+      try {
+        result = await instance.loginPopup(loginRequest);
+      } catch (popupErr) {
+        if (popupErr.errorCode === 'popup_window_error' || popupErr.errorCode === 'empty_window_error') {
+          // Popup blocked — fall back to redirect flow
+          await instance.loginRedirect(loginRequest);
+          return;
+        }
+        throw popupErr;
+      }
       await ssoLogin(result.idToken);
       navigate('/');
     } catch (err) {

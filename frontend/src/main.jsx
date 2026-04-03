@@ -9,6 +9,9 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import './index.css';
 
 msalInstance.initialize().then(() => {
+  // Process auth code from redirect (handles popup-blocked scenarios)
+  return msalInstance.handleRedirectPromise();
+}).then(() => {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
       <MsalProvider instance={msalInstance}>
