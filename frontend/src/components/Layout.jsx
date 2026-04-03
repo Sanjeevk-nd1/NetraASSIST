@@ -6,7 +6,7 @@ import { FileText, MessageSquare, FolderOpen, Settings, LogOut, User, Sun, Moon,
 import logo from "../assets/NetraDyne_id0zbN9jAQ_7.png";
 import api from '../api';
 
-function TypingText({ text, className = '', speed = 60 }) {
+function TypingText({ text, className = '', style, speed = 60 }) {
   const [displayed, setDisplayed] = useState('');
   useEffect(() => {
     let i = 0;
@@ -19,7 +19,7 @@ function TypingText({ text, className = '', speed = 60 }) {
     return () => clearInterval(id);
   }, [text, speed]);
   return (
-    <span className={className}>
+    <span className={className} style={style}>
       {displayed}
       {displayed.length < text.length && (
         <span className="inline-block w-[2px] h-[0.85em] bg-current align-middle ml-0.5 animate-pulse" />
@@ -122,7 +122,7 @@ export default function Layout() {
               </div>
               <div>
                 <span className="block text-lg font-extrabold tracking-tight text-dark">NetraASSIST</span>
-                <TypingText text="AN INFOSEC INNOVATION" className="block text-xs font-semibold uppercase tracking-[0.24em] text-muted-light" speed={70} />
+                <TypingText text="AN INFOSEC INNOVATION" className="block text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: '#45B87F' }} speed={70} />
               </div>
             </div>
 
@@ -261,7 +261,7 @@ export default function Layout() {
                 </div>
                 <div>
                   <span className="block text-base font-extrabold tracking-tight text-dark">NetraASSIST</span>
-                  <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-brand">An InfoSec Innovation</span>
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.2em]" style={{ color: '#45B87F' }}>An InfoSec Innovation</span>
                 </div>
               </div>
               <p className="mt-4 max-w-xs text-sm leading-6 text-muted">
@@ -301,7 +301,7 @@ export default function Layout() {
 
           <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-border-light/60 pt-6 md:flex-row">
             <p className="text-xs text-muted-light">
-              &copy; {new Date().getFullYear()} NetraASSIST — An InfoSec Innovation by Netradyne. All rights reserved.
+              &copy; {new Date().getFullYear()} NetraASSIST — <span style={{ color: '#45B87F' }}>An InfoSec Innovation</span> by Netradyne. All rights reserved.
             </p>
             <div className="flex gap-6">
               <Link to="/about" className="text-xs text-muted-light transition-colors hover:text-brand">About</Link>

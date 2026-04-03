@@ -1,3 +1,4 @@
+import logging
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from sqlalchemy import text
@@ -9,6 +10,8 @@ import sys
 import bcrypt
 
 from backend.database import SessionLocal
+
+logger = logging.getLogger(__name__)
 from backend.api.auth import log_audit
 from backend.services.sharepoint_sync_service import (
     SHAREPOINT_PROFILES,
@@ -432,14 +435,68 @@ def sync_knowledge_source():
             None,
             f"[{result['label']}] Indexed {result['indexed_count']} of {result['total_files']} files from {result['config']['folder_path']}"
         )
+
+        # Auto-clear answer cache after KB update so stale answers are not served
+        cache_cleared = _clear_answer_cache()
+        cache_msg = f" Answer cache cleared ({cache_cleared} entries)." if cache_cleared else ""
+
         return jsonify({
-            "message": f"Indexed {result['indexed_count']} of {result['total_files']} files from {result['label']}",
+            "message": f"Indexed {result['indexed_count']} of {result['total_files']} files from {result['label']}.{cache_msg}",
+            "cache_cleared": cache_cleared,
             **result,
         })
     except ValueError as e:
-        return jsonify({"error": f"SharePoint sync failed: {str(e)}"}), 400
+        logger.error("SharePoint sync ValueError: %s", e)
+        return jsonify({"error": "SharePoint sync failed. Check configuration."}), 400
     except Exception as e:
-        return jsonify({"error": f"SharePoint sync failed: {str(e)}"}), 500
+        logger.error("SharePoint sync error: %s", e)
+        return jsonify({"error": "SharePoint sync failed. Please try again."}), 500
+
+
+def _clear_answer_cache():
+    """Delete all rows from answer_cache. Returns count of deleted rows."""
+    db = SessionLocal()
+    try:
+        result = db.execute(text("DELETE FROM answer_cache"))
+        db.commit()
+        count = result.rowcount
+        logger.info("Cleared %d entries from answer_cache", count)
+        return count
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Failed to clear answer cache: %s", exc)
+        return 0
+    finally:
+        db.close()
+
+
+@admin_bp.route('/api/admin/cache/clear', methods=['POST'])
+@admin_required
+def clear_cache():
+    admin_id = get_jwt_identity()
+    count = _clear_answer_cache()
+    log_audit(admin_id, None, "cache_cleared", "system", None, f"Cleared {count} cached answers")
+    return jsonify({"message": f"Cleared {count} cached answers.", "cleared": count})
+
+
+@admin_bp.route('/api/admin/cache/stats', methods=['GET'])
+@admin_required
+def cache_stats():
+    db = SessionLocal()
+    try:
+        row = db.execute(text("""
+            SELECT COUNT(*), COALESCE(SUM(hit_count), 0),
+                   MIN(updated_at), MAX(updated_at)
+            FROM answer_cache
+        """)).fetchone()
+        return jsonify({
+            "total_entries": row[0],
+            "total_hits": int(row[1]),
+            "oldest": row[2].isoformat() if row[2] else None,
+            "newest": row[3].isoformat() if row[3] else None,
+        })
+    finally:
+        db.close()
 
 @admin_bp.route('/api/admin/sharepoint-config', methods=['GET'])
 @admin_required
@@ -475,7 +532,7 @@ def update_sharepoint_settings():
     except Exception as e:
         partial = get_sharepoint_config(profile)
         return jsonify({
-            "message": f"Repository URL was saved. Automatic SharePoint resolution was skipped: {str(e)}",
+            "message": "Repository URL was saved. Automatic SharePoint resolution was skipped.",
             "warning": True,
             **partial,
         })

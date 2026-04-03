@@ -1,4 +1,5 @@
 import logging
+import os
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from sqlalchemy import text
@@ -11,6 +12,23 @@ from backend.database import SessionLocal
 logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint('auth', __name__)
+
+# ── Rate limiting for login ─────────────────────────────────────────────
+_LOGIN_ATTEMPTS = {}  # {ip: [(timestamp, ...], ...}
+_LOGIN_MAX_ATTEMPTS = 10
+_LOGIN_WINDOW_SECONDS = 300  # 5 minutes
+
+def _check_rate_limit(ip):
+    """Return True if rate-limited."""
+    now = datetime.utcnow().timestamp()
+    attempts = _LOGIN_ATTEMPTS.get(ip, [])
+    attempts = [t for t in attempts if now - t < _LOGIN_WINDOW_SECONDS]
+    _LOGIN_ATTEMPTS[ip] = attempts
+    if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
+        return True
+    attempts.append(now)
+    _LOGIN_ATTEMPTS[ip] = attempts
+    return False
 
 def log_audit(user_id, user_email, action, resource_type=None, resource_id=None, details=None):
     db = SessionLocal()
@@ -35,6 +53,11 @@ def log_audit(user_id, user_email, action, resource_type=None, resource_id=None,
 
 @auth_bp.route('/api/auth/register', methods=['POST'])
 def register():
+    # Registration disabled — all users should sign in via Microsoft SSO
+    return jsonify({"error": "Registration is disabled. Please sign in with Microsoft."}), 403
+
+
+def _register_legacy():
     data = request.get_json()
     email = data.get('email', '').strip().lower()
     password = data.get('password', '')
@@ -93,6 +116,9 @@ def register():
 
 @auth_bp.route('/api/auth/login', methods=['POST'])
 def login():
+    if _check_rate_limit(request.remote_addr or '0.0.0.0'):
+        return jsonify({"error": "Too many login attempts. Please try again in a few minutes."}), 429
+
     data = request.get_json()
     if not data:
         return jsonify({"error": "Invalid request"}), 400
@@ -149,6 +175,173 @@ def login():
         db.rollback()
         logger.error(f"Login error: {e}")
         return jsonify({"error": "Login failed. Please try again."}), 500
+    finally:
+        db.close()
+
+
+# ── Microsoft SSO ────────────────────────────────────────────────────────
+
+# Cache Microsoft JWKS (public keys) to avoid fetching on every request
+_MS_JWKS_CACHE = {"keys": None, "fetched_at": 0}
+_MS_JWKS_TTL = 3600  # 1 hour
+
+def _get_ms_signing_keys():
+    """Fetch Microsoft's public signing keys (JWKS) for token verification."""
+    import time
+    now = time.time()
+    if _MS_JWKS_CACHE["keys"] and (now - _MS_JWKS_CACHE["fetched_at"]) < _MS_JWKS_TTL:
+        return _MS_JWKS_CACHE["keys"]
+
+    import requests as http_requests
+    tenant_id = os.environ.get("MS_SSO_TENANT_ID") or os.environ.get("AZURE_TENANT_ID", "")
+    jwks_url = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
+    resp = http_requests.get(jwks_url, timeout=10)
+    resp.raise_for_status()
+    keys = resp.json().get("keys", [])
+    _MS_JWKS_CACHE["keys"] = keys
+    _MS_JWKS_CACHE["fetched_at"] = now
+    return keys
+
+
+def _verify_ms_token(token_str):
+    """Verify a Microsoft ID token and return its claims."""
+    import jwt as pyjwt
+    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
+    from cryptography.hazmat.backends import default_backend
+    import base64
+
+    def _b64_to_int(b):
+        b += '=' * (4 - len(b) % 4)
+        return int.from_bytes(base64.urlsafe_b64decode(b), 'big')
+
+    # Decode header to find the key ID (kid)
+    header = pyjwt.get_unverified_header(token_str)
+    kid = header.get("kid")
+    if not kid:
+        raise ValueError("Token missing key ID (kid)")
+
+    # Find matching key from Microsoft's JWKS
+    keys = _get_ms_signing_keys()
+    key_data = next((k for k in keys if k.get("kid") == kid), None)
+    if not key_data:
+        # Refresh cache and retry once
+        _MS_JWKS_CACHE["keys"] = None
+        keys = _get_ms_signing_keys()
+        key_data = next((k for k in keys if k.get("kid") == kid), None)
+        if not key_data:
+            raise ValueError("Token signing key not found in Microsoft JWKS")
+
+    # Build RSA public key from JWK
+    n = _b64_to_int(key_data["n"])
+    e = _b64_to_int(key_data["e"])
+    pub_key = RSAPublicNumbers(e, n).public_key(default_backend())
+
+    tenant_id = os.environ.get("MS_SSO_TENANT_ID") or os.environ.get("AZURE_TENANT_ID", "")
+    client_id = os.environ.get("MS_SSO_CLIENT_ID", "")
+
+    # Verify and decode the token
+    claims = pyjwt.decode(
+        token_str,
+        pub_key,
+        algorithms=["RS256"],
+        audience=client_id,
+        issuer=f"https://login.microsoftonline.com/{tenant_id}/v2.0",
+        options={"require": ["exp", "iss", "aud", "sub"]},
+    )
+    return claims
+
+
+@auth_bp.route('/api/auth/sso', methods=['POST'])
+def sso_login():
+    """Authenticate user via Microsoft SSO ID token."""
+    data = request.get_json()
+    if not data or not data.get('token'):
+        return jsonify({"error": "Microsoft token is required"}), 400
+
+    ms_sso_enabled = os.environ.get("MS_SSO_ENABLED", "true").lower() == "true"
+    if not ms_sso_enabled:
+        return jsonify({"error": "SSO is not enabled"}), 403
+
+    try:
+        claims = _verify_ms_token(data['token'])
+    except Exception as exc:
+        logger.warning("SSO token verification failed: %s", exc)
+        return jsonify({"error": "Invalid Microsoft token. Please try again."}), 401
+
+    email = (claims.get('preferred_username') or claims.get('email') or '').strip().lower()
+    full_name = claims.get('name', '').strip()
+    ms_oid = claims.get('oid', '')  # Microsoft Object ID — unique per user
+
+    if not email:
+        return jsonify({"error": "No email found in Microsoft token"}), 400
+
+    # Restrict to company domain
+    allowed_domains = ['netradyne.com']
+    domain = email.split('@')[-1] if '@' in email else ''
+    if domain not in allowed_domains:
+        return jsonify({"error": f"Only @netradyne.com accounts are allowed"}), 403
+
+    db = SessionLocal()
+    try:
+        user = db.execute(
+            text("SELECT id, email, full_name, role, is_active FROM users WHERE LOWER(email) = :email LIMIT 1"),
+            {"email": email}
+        ).fetchone()
+
+        if user:
+            if not user[4]:
+                return jsonify({"error": "Your account has been deactivated. Contact an admin."}), 403
+
+            # Update name and login timestamp
+            db.execute(text("""
+                UPDATE users SET full_name = :name, last_login = :now WHERE id = :id
+            """), {"name": full_name or user[2], "id": str(user[0]), "now": datetime.utcnow()})
+            db.commit()
+
+            user_id = str(user[0])
+            role = user[3]
+        else:
+            # Auto-create user on first SSO login
+            user_id = str(uuid.uuid4())
+            # SSO users get a random password hash (can't be used for password login)
+            random_hash = bcrypt.hashpw(uuid.uuid4().hex.encode(), bcrypt.gensalt()).decode()
+            db.execute(text("""
+                INSERT INTO users (id, email, password_hash, full_name, role, last_login)
+                VALUES (:id, :email, :pw, :name, 'user', :now)
+            """), {
+                "id": user_id,
+                "email": email,
+                "pw": random_hash,
+                "name": full_name or email.split('@')[0],
+                "now": datetime.utcnow(),
+            })
+            db.commit()
+            role = 'user'
+            logger.info("SSO auto-created user: %s (%s)", email, user_id)
+
+        log_audit(user_id, email, "sso_login", "user", user_id, f"SSO login: {full_name or email}")
+
+        access_token = create_access_token(
+            identity=user_id,
+            additional_claims={"role": role, "email": email}
+        )
+        refresh_token = create_refresh_token(identity=user_id)
+
+        return jsonify({
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "user": {
+                "id": user_id,
+                "email": email,
+                "full_name": full_name or email.split('@')[0],
+                "role": role,
+            }
+        })
+
+    except Exception as e:
+        db.rollback()
+        logger.error("SSO login error: %s", e)
+        return jsonify({"error": "SSO login failed. Please try again."}), 500
     finally:
         db.close()
 

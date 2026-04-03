@@ -36,8 +36,21 @@ def create_app():
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = Config.JWT_ACCESS_TOKEN_EXPIRES
     app.config['JWT_REFRESH_TOKEN_EXPIRES'] = Config.JWT_REFRESH_TOKEN_EXPIRES
 
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://localhost:3002",
+        "https://netrassist.netradyne.info",
+    ]
+    CORS(app, resources={r"/api/*": {"origins": allowed_origins, "supports_credentials": True}})
     jwt = JWTManager(app)
+
+    @app.after_request
+    def set_security_headers(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        return response
 
     @app.before_request
     def check_user_active():
@@ -45,7 +58,7 @@ def create_app():
         # Skip non-API paths (static files, frontend routes)
         if not req.path.startswith('/api/'):
             return
-        if req.path in ('/api/auth/login', '/api/auth/register'):
+        if req.path in ('/api/auth/login', '/api/auth/register', '/api/auth/sso'):
             return
         try:
             verify_jwt_in_request(optional=True)

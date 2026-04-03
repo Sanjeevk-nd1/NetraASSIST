@@ -321,6 +321,8 @@ function DocumentLibrary() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
+  const [clearingCache, setClearingCache] = useState(false);
+  const [cacheStats, setCacheStats] = useState(null);
   const emptyProfile = { repository_url: '', site_id: '', drive_id: '', folder_path: '', last_sync_at: null, label: '' };
   const [settings, setSettings] = useState({ knowledge: emptyProfile, policy: emptyProfile });
   const [savingSettings, setSavingSettings] = useState(false);
@@ -345,6 +347,27 @@ function DocumentLibrary() {
 
   useEffect(() => { loadDocuments(); }, [loadDocuments]);
 
+  const loadCacheStats = useCallback(async () => {
+    try {
+      const res = await api.get('/api/admin/cache/stats');
+      setCacheStats(res.data);
+    } catch { setCacheStats(null); }
+  }, []);
+
+  useEffect(() => { loadCacheStats(); }, [loadCacheStats]);
+
+  const handleClearCache = async () => {
+    setClearingCache(true);
+    try {
+      const res = await api.post('/api/admin/cache/clear');
+      setSyncMessage(res.data.message);
+      loadCacheStats();
+    } catch (err) {
+      setSyncMessage(err.response?.data?.error || 'Failed to clear cache');
+    }
+    setClearingCache(false);
+  };
+
   const handleSync = async (profile) => {
     setSyncing(true);
     setSyncMessage('');
@@ -352,6 +375,7 @@ function DocumentLibrary() {
       const res = await api.post('/api/admin/knowledge-source/sync', { profile });
       setSyncMessage(res.data.message);
       loadDocuments();
+      loadCacheStats();
     } catch (err) {
       setSyncMessage(err.response?.data?.error || 'Sync failed');
     }
@@ -484,7 +508,7 @@ function DocumentLibrary() {
               </p>
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <button onClick={() => handleSaveSettings(activeRepository)} disabled={savingSettings} className="button-primary flex h-12 items-center justify-center gap-2 rounded-2xl px-6 text-sm disabled:opacity-50">
                 {savingSettings ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                 Save
@@ -496,6 +520,14 @@ function DocumentLibrary() {
               >
                 <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
                 Sync
+              </button>
+              <button
+                onClick={handleClearCache}
+                disabled={clearingCache || !cacheStats?.total_entries}
+                className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-6 text-sm font-semibold text-orange-700 transition-all hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:transform-none dark:border-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
+              >
+                {clearingCache ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                Clear Cache{cacheStats?.total_entries ? ` (${cacheStats.total_entries})` : ''}
               </button>
             </div>
           </section>

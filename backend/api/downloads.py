@@ -67,7 +67,14 @@ def download_file(download_id):
         if not row:
             return jsonify({"error": "File not found"}), 404
 
-        return send_file(row[0], as_attachment=True, download_name=row[1])
+        # Path traversal protection: ensure file_path is within the downloads directory
+        import os
+        downloads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'downloads')
+        real_path = os.path.realpath(row[0])
+        if not real_path.startswith(os.path.realpath(downloads_dir)):
+            return jsonify({"error": "File not found"}), 404
+
+        return send_file(real_path, as_attachment=True, download_name=row[1])
     finally:
         db.close()
 

@@ -153,7 +153,8 @@ def chat():
             if not has_indexed_documents():
                 answer = "**⚠️ No knowledge base documents are indexed.** Responses are based on general AI knowledge only, not your organization's data. Please configure SharePoint sync in the Admin panel.\n\n---\n\n" + answer
         except Exception as e:
-            answer = f"I apologize, but I encountered an error processing your question. Please try again. Error: {str(e)}"
+            logger.error("Chat error: %s", e)
+            answer = "I apologize, but I encountered an error processing your question. Please try again."
 
         assistant_msg_id = str(uuid.uuid4())
         db.execute(text("""

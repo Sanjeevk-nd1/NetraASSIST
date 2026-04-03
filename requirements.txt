@@ -1,5 +1,6 @@
 bcrypt
 celery[redis]
+cryptography
 flask
 flask-cors
 flask-jwt-extended
@@ -10,6 +11,7 @@ openai
 openpyxl
 pandas
 psycopg2-binary
+PyJWT
 pymupdf
 python-docx
 python-dotenv
