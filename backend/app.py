@@ -171,7 +171,6 @@ def _create_default_admin():
     import bcrypt
 
     admin_email = os.environ.get('PERMANENT_ADMIN_EMAIL', '').strip().lower()
-    admin_pw = os.environ.get('ADMIN_DEFAULT_PASSWORD', '')
 
     db = SessionLocal()
     try:
@@ -182,40 +181,39 @@ def _create_default_admin():
     except Exception:
         db.rollback()
 
-    if not admin_email or not admin_pw:
-        logger.info("PERMANENT_ADMIN_EMAIL or ADMIN_DEFAULT_PASSWORD not set, skipping super admin seed.")
+    if not admin_email:
+        logger.info("PERMANENT_ADMIN_EMAIL not set, skipping super admin seed.")
         db.close()
         return
 
     try:
         existing = db.execute(text("""
-            SELECT id, password_hash
+            SELECT id, role
             FROM users
             WHERE LOWER(email) = :email
             LIMIT 1
         """), {"email": admin_email}).fetchone()
 
         if existing:
-            # Always sync password from env so .env credentials are authoritative
-            password_hash = bcrypt.hashpw(admin_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            # Ensure the permanent admin always has super_admin role and is active
             db.execute(text("""
                 UPDATE users
                 SET role = 'super_admin',
-                    is_active = true,
-                    full_name = 'Super Admin',
-                    password_hash = :pw
+                    is_active = true
                 WHERE id = :id
-            """), {"id": existing[0], "pw": password_hash})
+            """), {"id": existing[0]})
             db.commit()
-            logger.info("Super admin account verified.")
+            logger.info("Super admin account verified: %s", admin_email)
         else:
-            password_hash = bcrypt.hashpw(admin_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            # Pre-create with a random password hash (SSO login will work;
+            # password login is not needed for SSO users)
+            random_hash = bcrypt.hashpw(os.urandom(32).hex().encode(), bcrypt.gensalt()).decode()
             db.execute(text("""
                 INSERT INTO users (email, password_hash, full_name, role)
-                VALUES (:email, :pw, 'Super Admin', 'super_admin')
-            """), {"email": admin_email, "pw": password_hash})
+                VALUES (:email, :pw, :name, 'super_admin')
+            """), {"email": admin_email, "pw": random_hash, "name": admin_email.split('@')[0].replace('.', ' ').title()})
             db.commit()
-            logger.info("Super admin account created.")
+            logger.info("Super admin account created for SSO: %s", admin_email)
     except Exception as e:
         db.rollback()
         logger.warning(f"Admin creation skipped: {e}")

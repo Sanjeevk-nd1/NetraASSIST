@@ -30,13 +30,9 @@ function TypingText({ text, className = '', style, speed = 60 }) {
 }
 
 export default function Login() {
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [clickCount, setClickCount] = useState(0);
-  const { user, login, ssoLogin } = useAuth();
+  const { user } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const { instance } = useMsal();
   const navigate = useNavigate();
@@ -54,19 +50,6 @@ export default function Login() {
       await instance.loginRedirect(loginRequest);
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'SSO login failed. Please try again.');
-    }
-    setLoading(false);
-  };
-
-  const handleAdminSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      await login(email, password);
-      navigate('/');
-    } catch (err) {
-      setError(err.response?.data?.error || 'Invalid credentials.');
     }
     setLoading(false);
   };
@@ -91,14 +74,7 @@ export default function Login() {
                 Netradyne's Intelligence
               </div>
               <div className="mt-6 flex items-center gap-4">
-                <div
-                  className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-[1.75rem] bg-brand-light cursor-pointer select-none"
-                  onClick={() => {
-                    const next = clickCount + 1;
-                    if (next >= 5) { setShowAdminLogin(true); setClickCount(0); }
-                    else { setClickCount(next); setTimeout(() => setClickCount(0), 2000); }
-                  }}
-                >
+                <div className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-[1.75rem] bg-brand-light">
                   <img src={logo} alt="Logo" className="h-10 w-10 object-contain" />
                 </div>
                 <h1 className="max-w-md text-4xl font-extrabold tracking-tight text-dark lg:text-5xl">
@@ -136,8 +112,7 @@ export default function Login() {
               </div>
             )}
 
-            {!showAdminLogin ? (
-              <div className="mt-10 flex flex-col items-center gap-6">
+            <div className="mt-10 flex flex-col items-center gap-6">
                 <button
                   onClick={handleSsoLogin}
                   disabled={loading}
@@ -161,58 +136,7 @@ export default function Login() {
                 <p className="text-center text-xs text-muted">
                   Only <span className="font-semibold">@netradyne.com</span> accounts are permitted
                 </p>
-              </div>
-            ) : (
-              <div className="mt-8">
-                <form onSubmit={handleAdminSubmit} className="space-y-6">
-                  <div className="space-y-2.5">
-                    <label className="block text-sm font-bold text-dark-secondary">Email or Username</label>
-                    <input
-                      type="text"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full rounded-2xl border border-border px-4 py-3 text-sm text-dark transition-all focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand bg-input-bg"
-                      placeholder="Enter admin email"
-                      required
-                      autoComplete="username"
-                    />
-                  </div>
-
-                  <div className="space-y-2.5">
-                    <label className="block text-sm font-bold text-dark-secondary">Password</label>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full rounded-2xl border border-border px-4 py-3 text-sm text-dark transition-all focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand bg-input-bg"
-                      placeholder="Enter admin password"
-                      required
-                      autoComplete="current-password"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="button-primary flex h-12 w-full items-center justify-center rounded-2xl text-sm hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:transform-none"
-                  >
-                    {loading ? (
-                      <div className="h-5 w-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                    ) : (
-                      'Sign In'
-                    )}
-                  </button>
-                </form>
-
-                <button
-                  type="button"
-                  onClick={() => { setShowAdminLogin(false); setError(''); }}
-                  className="mt-4 w-full text-center text-xs text-muted hover:text-brand transition-colors"
-                >
-                  ← Back to Microsoft Sign In
-                </button>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
