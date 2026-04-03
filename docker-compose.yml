@@ -39,7 +39,11 @@ services:
 
   # ── Flask/Gunicorn (API + Frontend) ─────────────────────────────────
   web:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_MS_SSO_CLIENT_ID: ${VITE_MS_SSO_CLIENT_ID}
+        VITE_MS_SSO_TENANT_ID: ${VITE_MS_SSO_TENANT_ID}
     restart: unless-stopped
     ports:
       - "${PORT:-3002}:${PORT:-3002}"

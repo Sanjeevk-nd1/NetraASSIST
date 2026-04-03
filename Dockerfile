@@ -1,10 +1,14 @@
 # ── Stage 1: Build frontend ──────────────────────────────────────────
 FROM node:20-alpine AS frontend-build
 
+ARG VITE_MS_SSO_CLIENT_ID
+ARG VITE_MS_SSO_TENANT_ID
+
 WORKDIR /app
 COPY package.json ./
 RUN npm install --production=false
 COPY frontend/ ./frontend/
+COPY .env* ./
 RUN npx vite build --config frontend/vite.config.js
 
 
