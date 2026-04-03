@@ -2,9 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FileText, MessageSquare, FolderOpen, Settings, LogOut, User, Sun, Moon, ArrowUp, Key, ChevronDown, X, Loader2, CheckCircle, Pencil } from 'lucide-react';
+import { FileText, MessageSquare, FolderOpen, Settings, LogOut, User, Sun, Moon, ArrowUp, Key, ChevronDown } from 'lucide-react';
 import logo from "../assets/NetraDyne_id0zbN9jAQ_7.png";
-import api from '../api';
 
 function TypingText({ text, className = '', style, speed = 60 }) {
   const [displayed, setDisplayed] = useState('');
@@ -29,7 +28,7 @@ function TypingText({ text, className = '', style, speed = 60 }) {
 }
 
 export default function Layout() {
-  const { user, logout, checkAuth } = useAuth();
+  const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -46,11 +45,6 @@ export default function Layout() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [navSticky, setNavSticky] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [pwForm, setPwForm] = useState({ full_name: '', current_password: '', new_password: '', confirm_password: '' });
-  const [pwSaving, setPwSaving] = useState(false);
-  const [pwError, setPwError] = useState('');
-  const [pwSuccess, setPwSuccess] = useState(false);
   const userMenuRef = useRef(null);
 
   // Close dropdown on outside click
@@ -61,32 +55,6 @@ export default function Layout() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
-
-  const handleChangePassword = async () => {
-    setPwError('');
-    const hasNewPw = pwForm.new_password || pwForm.confirm_password || pwForm.current_password;
-    const hasNameChange = pwForm.full_name && pwForm.full_name !== (user?.full_name || '');
-    if (!hasNewPw && !hasNameChange) { setPwError('Nothing to update'); return; }
-    if (hasNewPw) {
-      if (!pwForm.current_password) { setPwError('Current password is required to change password'); return; }
-      if (!pwForm.new_password) { setPwError('New password is required'); return; }
-      if (pwForm.new_password.length < 6) { setPwError('New password must be at least 6 characters'); return; }
-      if (pwForm.new_password !== pwForm.confirm_password) { setPwError('New passwords do not match'); return; }
-    }
-    setPwSaving(true);
-    try {
-      const payload = {};
-      if (hasNameChange) payload.full_name = pwForm.full_name;
-      if (hasNewPw) { payload.current_password = pwForm.current_password; payload.new_password = pwForm.new_password; }
-      await api.put('/api/auth/change-password', payload);
-      setPwSuccess(true);
-      if (hasNameChange) await checkAuth();
-      setTimeout(() => { setShowPasswordModal(false); setPwSuccess(false); setPwForm({ full_name: '', current_password: '', new_password: '', confirm_password: '' }); }, 1500);
-    } catch (err) {
-      setPwError(err.response?.data?.error || 'Failed to update profile');
-    }
-    setPwSaving(false);
-  };
 
   useEffect(() => {
     const onScroll = () => {
@@ -173,15 +141,6 @@ export default function Layout() {
               <p className="text-sm font-semibold text-dark truncate">{displayName}</p>
               <p className="text-xs text-muted-light truncate">{user?.email}</p>
             </div>
-            {!isSuperAdmin && (
-              <button
-                onClick={() => { setUserMenuOpen(false); setPwForm({ full_name: user?.full_name || '', current_password: '', new_password: '', confirm_password: '' }); setShowPasswordModal(true); }}
-                className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-dark-secondary hover:bg-surface-light transition-colors"
-              >
-                <Pencil size={15} className="text-muted-light" />
-                Update Profile
-              </button>
-            )}
             <button
               onClick={() => { setUserMenuOpen(false); handleLogout(); }}
               className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-danger hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -321,82 +280,6 @@ export default function Layout() {
         >
           <ArrowUp size={20} />
         </button>
-      )}
-
-      {/* ── Update Profile Modal ── */}
-      {showPasswordModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowPasswordModal(false)}>
-          <div className="w-full max-w-md rounded-3xl border border-border-light bg-card shadow-2xl mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-border-lighter px-6 py-4">
-              <div className="flex items-center gap-2.5">
-                <Pencil size={18} className="text-brand" />
-                <h3 className="text-base font-bold text-dark">Update Profile</h3>
-              </div>
-              <button onClick={() => { setShowPasswordModal(false); setPwError(''); setPwSuccess(false); setPwForm({ full_name: '', current_password: '', new_password: '', confirm_password: '' }); }} className="icon-button h-8 w-8 text-muted-light hover:text-dark">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="px-6 py-5 space-y-4">
-              {pwError && (
-                <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 px-3 py-2.5 text-sm text-red-700 dark:text-red-300">{pwError}</div>
-              )}
-              {pwSuccess ? (
-                <div className="flex flex-col items-center py-6 gap-3">
-                  <CheckCircle size={40} className="text-emerald-500" />
-                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Profile updated successfully!</p>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-xs font-semibold text-muted mb-1.5">Display Name</label>
-                    <input
-                      type="text"
-                      value={pwForm.full_name}
-                      onChange={(e) => setPwForm({ ...pwForm, full_name: e.target.value })}
-                      className="w-full h-11 rounded-xl border border-border bg-input-bg px-3 text-sm text-dark placeholder:text-muted-lighter focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-                      placeholder="Your display name"
-                    />
-                  </div>
-                  <div className="border-t border-border-lighter pt-4">
-                    <p className="text-xs font-semibold text-muted mb-3">Change Password <span className="font-normal text-muted-lighter">(optional)</span></p>
-                    <div className="space-y-3">
-                      <input
-                        type="password"
-                        value={pwForm.current_password}
-                        onChange={(e) => setPwForm({ ...pwForm, current_password: e.target.value })}
-                        className="w-full h-11 rounded-xl border border-border bg-input-bg px-3 text-sm text-dark placeholder:text-muted-lighter focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-                        placeholder="Current password"
-                      />
-                      <input
-                        type="password"
-                        value={pwForm.new_password}
-                        onChange={(e) => setPwForm({ ...pwForm, new_password: e.target.value })}
-                        className="w-full h-11 rounded-xl border border-border bg-input-bg px-3 text-sm text-dark placeholder:text-muted-lighter focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-                        placeholder="New password (min 6 chars)"
-                      />
-                      <input
-                        type="password"
-                        value={pwForm.confirm_password}
-                        onChange={(e) => setPwForm({ ...pwForm, confirm_password: e.target.value })}
-                        className="w-full h-11 rounded-xl border border-border bg-input-bg px-3 text-sm text-dark placeholder:text-muted-lighter focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-                        placeholder="Confirm new password"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-3 pt-2">
-                    <button onClick={() => { setShowPasswordModal(false); setPwError(''); setPwForm({ full_name: '', current_password: '', new_password: '', confirm_password: '' }); }} className="button-secondary flex h-10 items-center gap-2 rounded-xl px-4 text-sm">
-                      Cancel
-                    </button>
-                    <button onClick={handleChangePassword} disabled={pwSaving} className="button-primary flex h-10 items-center gap-2 rounded-xl px-4 text-sm disabled:opacity-40">
-                      {pwSaving ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
-                      Save Changes
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

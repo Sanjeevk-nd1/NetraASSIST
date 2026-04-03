@@ -3,7 +3,7 @@ import {
   Users, FileText, Loader2, Calendar, Trash2, RefreshCw, Database,
   CheckCircle, XCircle, ExternalLink, Save, RotateCcw, Globe,
   ChevronLeft, ChevronRight, Settings, HardDrive, Search, Filter, X, Clock,
-  Copy, Plus, Mail, Shield
+  Copy, Mail, Shield
 } from 'lucide-react';
 import { format } from 'date-fns';
 import api from '../api';
@@ -105,9 +105,6 @@ function UserManagement() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newUser, setNewUser] = useState({ emailLocal: '', full_name: '', password: '', role: 'user' });
-  const [creating, setCreating] = useState(false);
 
   const roleLabels = { user: 'Standard User', admin: 'Administrative User', super_admin: 'Super Admin' };
 
@@ -150,89 +147,16 @@ function UserManagement() {
     }
   };
 
-  const createUser = async () => {
-    if (!newUser.emailLocal || !newUser.full_name || !newUser.password) {
-      alert('All fields are required');
-      return;
-    }
-    setCreating(true);
-    try {
-      const email = newUser.emailLocal.trim().toLowerCase() + '@netradyne.com';
-      await api.post('/api/admin/users', { email, full_name: newUser.full_name, password: newUser.password, role: newUser.role });
-      setNewUser({ emailLocal: '', full_name: '', password: '', role: 'user' });
-      setShowAddForm(false);
-      loadUsers();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Failed to create user');
-    }
-    setCreating(false);
-  };
-
   if (loading) return <div className="flex justify-center py-20"><Loader2 size={28} className="animate-spin text-muted-lighter" /></div>;
 
   return (
     <div>
-      <div className="mb-5 flex items-center justify-between">
+      <div className="mb-5">
         <div>
           <h2 className="text-lg font-bold text-dark">Registered Users</h2>
           <p className="mt-1 text-sm text-muted">Manage user accounts and permissions.</p>
         </div>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="button-primary flex h-10 items-center gap-2 rounded-xl px-4 text-sm"
-        >
-          <Plus size={15} /> Add User
-        </button>
       </div>
-
-      {showAddForm && (
-        <div className="panel-card mb-6 p-5">
-          <h3 className="text-sm font-bold text-dark mb-4">Create New User</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input
-              type="text"
-              placeholder="Full Name"
-              value={newUser.full_name}
-              onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
-              className="h-10 rounded-xl border border-border bg-input-bg px-3 text-sm text-dark placeholder:text-muted-lighter focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-            />
-            <div className="flex h-10 rounded-xl border border-border bg-input-bg overflow-hidden focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30">
-              <input
-                type="text"
-                placeholder="username"
-                value={newUser.emailLocal}
-                onChange={(e) => setNewUser({ ...newUser, emailLocal: e.target.value.replace(/[^a-zA-Z0-9._-]/g, '') })}
-                className="flex-1 min-w-0 bg-transparent px-3 text-sm text-dark placeholder:text-muted-lighter focus:outline-none"
-              />
-              <span className="flex items-center bg-surface-card border-l border-border px-3 text-sm text-muted-light font-medium select-none">@netradyne.com</span>
-            </div>
-            <input
-              type="password"
-              placeholder="Password (min 6 chars)"
-              value={newUser.password}
-              onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              className="h-10 rounded-xl border border-border bg-input-bg px-3 text-sm text-dark placeholder:text-muted-lighter focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
-            />
-            <select
-              value={newUser.role}
-              onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
-              className="h-10 rounded-xl border border-border bg-input-bg px-3 text-sm text-dark cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand/30"
-            >
-              <option value="user">Standard User</option>
-              <option value="admin">Administrative User</option>
-            </select>
-          </div>
-          <div className="mt-4 flex items-center gap-3 justify-end">
-            <button onClick={() => { setShowAddForm(false); setNewUser({ emailLocal: '', full_name: '', password: '', role: 'user' }); }} className="button-secondary flex h-10 items-center gap-2 rounded-xl px-4 text-sm">
-              Cancel
-            </button>
-            <button onClick={createUser} disabled={creating} className="button-primary flex h-10 items-center gap-2 rounded-xl px-4 text-sm disabled:opacity-40">
-              {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-              Create User
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="table-shell overflow-x-auto">
         <table className="w-full min-w-[760px]">
