@@ -170,7 +170,9 @@ def _recover_stale_jobs():
 def _create_default_admin():
     import bcrypt
 
-    admin_email = os.environ.get('PERMANENT_ADMIN_EMAIL', '').strip().lower()
+    # Support multiple super admin emails, comma-separated
+    raw = os.environ.get('PERMANENT_ADMIN_EMAILS', '') or os.environ.get('PERMANENT_ADMIN_EMAIL', '')
+    admin_emails = [e.strip().lower() for e in raw.split(',') if e.strip()]
 
     db = SessionLocal()
     try:
@@ -181,42 +183,42 @@ def _create_default_admin():
     except Exception:
         db.rollback()
 
-    if not admin_email:
-        logger.info("PERMANENT_ADMIN_EMAIL not set, skipping super admin seed.")
+    if not admin_emails:
+        logger.info("PERMANENT_ADMIN_EMAILS not set, skipping super admin seed.")
         db.close()
         return
 
     try:
-        existing = db.execute(text("""
-            SELECT id, role
-            FROM users
-            WHERE LOWER(email) = :email
-            LIMIT 1
-        """), {"email": admin_email}).fetchone()
+        # Promote listed emails to super_admin
+        for admin_email in admin_emails:
+            existing = db.execute(text("""
+                SELECT id FROM users WHERE LOWER(email) = :email LIMIT 1
+            """), {"email": admin_email}).fetchone()
 
-        if existing:
-            # Ensure the permanent admin always has super_admin role and is active
-            db.execute(text("""
-                UPDATE users
-                SET role = 'super_admin',
-                    is_active = true
-                WHERE id = :id
-            """), {"id": existing[0]})
-            db.commit()
-            logger.info("Super admin account verified: %s", admin_email)
-        else:
-            # Pre-create with a random password hash (SSO login will work;
-            # password login is not needed for SSO users)
-            random_hash = bcrypt.hashpw(os.urandom(32).hex().encode(), bcrypt.gensalt()).decode()
-            db.execute(text("""
-                INSERT INTO users (email, password_hash, full_name, role)
-                VALUES (:email, :pw, :name, 'super_admin')
-            """), {"email": admin_email, "pw": random_hash, "name": admin_email.split('@')[0].replace('.', ' ').title()})
-            db.commit()
-            logger.info("Super admin account created for SSO: %s", admin_email)
+            if existing:
+                db.execute(text("""
+                    UPDATE users SET role = 'super_admin', is_active = true WHERE id = :id
+                """), {"id": existing[0]})
+                logger.info("Super admin verified: %s", admin_email)
+            else:
+                random_hash = bcrypt.hashpw(os.urandom(32).hex().encode(), bcrypt.gensalt()).decode()
+                db.execute(text("""
+                    INSERT INTO users (email, password_hash, full_name, role)
+                    VALUES (:email, :pw, :name, 'super_admin')
+                """), {"email": admin_email, "pw": random_hash, "name": admin_email.split('@')[0].replace('.', ' ').title()})
+                logger.info("Super admin created for SSO: %s", admin_email)
+
+        # Demote any super_admins NOT in the env list back to admin
+        for row in db.execute(text("SELECT id, email FROM users WHERE role = 'super_admin'")).fetchall():
+            if row[1].lower() not in admin_emails:
+                db.execute(text("UPDATE users SET role = 'admin' WHERE id = :id"), {"id": row[0]})
+                logger.info("Demoted former super admin to admin: %s", row[1])
+
+        db.commit()
+        logger.info("Super admin sync complete. Active super admins: %s", admin_emails)
     except Exception as e:
         db.rollback()
-        logger.warning(f"Admin creation skipped: {e}")
+        logger.warning(f"Admin sync error: {e}")
     finally:
         db.close()
 
