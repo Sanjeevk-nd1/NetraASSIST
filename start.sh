@@ -21,7 +21,7 @@ fi
 echo "Starting Celery worker..."
 celery -A backend.celery_app worker \
   --queues=batch \
-  --concurrency="${DOC_PROCESS_MAX_WORKERS:-4}" \
+  --concurrency="${DOC_PROCESS_MAX_WORKERS:-8}" \
   --loglevel=info \
   --without-heartbeat \
   --without-mingle &
@@ -32,7 +32,7 @@ if [ "$MODE" = "prod" ]; then
   # ── Production mode: gunicorn with multiple workers ────────────────
   echo "Starting backend (production mode — gunicorn on port $PORT)..."
   gunicorn \
-    --workers "${GUNICORN_WORKERS:-4}" \
+    --workers "${GUNICORN_WORKERS:-9}" \
     --threads "${GUNICORN_THREADS:-4}" \
     --bind "0.0.0.0:$PORT" \
     --timeout 120 \

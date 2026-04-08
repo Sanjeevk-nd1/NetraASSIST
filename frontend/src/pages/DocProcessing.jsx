@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Upload, FileSpreadsheet, Play, Download, CheckCircle, CheckCheck, Edit3, X,
   ExternalLink, Loader2, Trash2, Info, ChevronDown, ChevronUp, Eye, Save,
-  Clock, RotateCcw, Square
+  Clock, RotateCcw, Square, AlertTriangle, Filter
 } from 'lucide-react';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
@@ -496,9 +496,17 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
   const [editValue, setEditValue] = useState('');
   const [regeneratingIds, setRegeneratingIds] = useState(new Set());
   const [expandedSources, setExpandedSources] = useState({});
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [showDownloadWarning, setShowDownloadWarning] = useState(false);
 
   const answeredCount = job.questions?.filter((q) => ['answered', 'accepted'].includes(q.status)).length || 0;
+  const acceptedCount = job.questions?.filter((q) => q.status === 'accepted').length || 0;
+  const pendingCount = job.questions?.filter((q) => q.status === 'pending').length || 0;
+  const answeredOnlyCount = job.questions?.filter((q) => q.status === 'answered').length || 0;
+  const errorCount = job.questions?.filter((q) => q.status === 'error').length || 0;
   const totalQuestions = job.questions?.length || 0;
+  const unreviewedCount = totalQuestions - acceptedCount;
+  const reviewProgress = totalQuestions > 0 ? Math.round((acceptedCount / totalQuestions) * 100) : 0;
   const progress = totalQuestions > 0 ? Math.round((job.processed_count / totalQuestions) * 100) : 0;
   const canStart = ['uploaded', 'failed', 'canceled'].includes(job.status);
   const canStop = ['processing', 'canceling'].includes(job.status);
@@ -508,6 +516,18 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
   const isResume = canStart && job.status === 'canceled' && hasUnanswered;
   const sheetNames = [...new Set(job.questions?.map((q) => q.sheet_name).filter(Boolean) || [])];
   const hasMultipleSheets = sheetNames.length > 1;
+
+  const filteredQuestions = statusFilter === 'all'
+    ? job.questions
+    : job.questions?.filter((q) => q.status === statusFilter) || [];
+
+  const handleDownloadClick = () => {
+    if (unreviewedCount > 0) {
+      setShowDownloadWarning(true);
+    } else {
+      onDownload();
+    }
+  };
 
   const handleEdit = (question) => {
     setEditingId(question.id);
@@ -589,7 +609,7 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
                   </button>
                 )}
                 {canDownload && (
-                  <button onClick={onDownload} className="button-secondary flex h-11 items-center gap-2 rounded-2xl px-5 text-sm hover:-translate-y-0.5 hover:bg-surface-light">
+                  <button onClick={handleDownloadClick} className="button-secondary flex h-11 items-center gap-2 rounded-2xl px-5 text-sm hover:-translate-y-0.5 hover:bg-surface-light">
                     <Download size={15} /> Download
                   </button>
                 )}
@@ -613,6 +633,21 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
                 </div>
               </div>
             )}
+
+            {answeredCount > 0 && (
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between text-xs font-semibold text-muted-light">
+                  <span>Review Progress</span>
+                  <span className={acceptedCount === totalQuestions ? 'text-emerald-600' : ''}>
+                    {acceptedCount} / {totalQuestions} accepted ({reviewProgress}%)
+                    {unreviewedCount > 0 && <span className="ml-2 text-amber-600">· {unreviewedCount} unreviewed</span>}
+                  </span>
+                </div>
+                <div className="h-2.5 w-full rounded-full bg-border-light">
+                  <div className="h-2.5 rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${reviewProgress}%` }} />
+                </div>
+              </div>
+            )}
           </div>
 
           {job.detected_columns && Object.keys(job.detected_columns).length > 0 && (
@@ -630,9 +665,37 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
             </div>
           )}
 
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              { key: 'all', label: 'All', count: totalQuestions },
+              { key: 'pending', label: 'Pending', count: pendingCount },
+              { key: 'answered', label: 'Answered', count: answeredOnlyCount },
+              { key: 'accepted', label: 'Accepted', count: acceptedCount },
+              { key: 'error', label: 'Error', count: errorCount },
+            ].filter(tab => tab.key === 'all' || tab.count > 0).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setStatusFilter(tab.key)}
+                className={`flex items-center gap-1.5 rounded-2xl px-4 py-2 text-xs font-bold transition-all ${
+                  statusFilter === tab.key
+                    ? 'bg-brand text-white shadow-sm'
+                    : 'bg-surface-light text-muted hover:bg-surface hover:text-dark-secondary'
+                }`}
+              >
+                {tab.label}
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-extrabold ${
+                  statusFilter === tab.key ? 'bg-white/20 text-white' : 'bg-border-light text-muted-light'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
           <div className="space-y-6 stagger-enter">
-            {job.questions?.map((question, index) => (
-              <div
+            {filteredQuestions?.map((question, index) => {
+              const originalIndex = job.questions?.indexOf(question) ?? index;
+              return (<div
                 key={question.id}
                 className={`panel-card transition-all ${
                   question.status === 'accepted'
@@ -646,7 +709,7 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="mb-3 flex items-start gap-3">
-                        <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-surface text-xs font-bold text-muted">{index + 1}</span>
+                        <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-surface text-xs font-bold text-muted">{originalIndex + 1}</span>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold leading-relaxed text-dark">{question.question}</p>
                           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -758,8 +821,42 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
+
+          {/* Download Warning Modal */}
+          {showDownloadWarning && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-up">
+              <div className="mx-4 w-full max-w-md rounded-3xl border border-border-light bg-surface-card p-8 shadow-2xl">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-amber-500/10">
+                    <AlertTriangle size={24} className="text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-extrabold text-dark">Unreviewed Responses</h3>
+                    <p className="mt-2 text-sm text-muted">
+                      <span className="font-bold text-amber-600">{unreviewedCount}</span> of {totalQuestions} responses have not been accepted yet. Downloaded results will include unreviewed answers.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => setShowDownloadWarning(false)}
+                    className="button-secondary flex h-11 items-center gap-2 rounded-2xl px-5 text-sm hover:bg-surface-light"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { setShowDownloadWarning(false); onDownload(); }}
+                    className="flex h-11 items-center gap-2 rounded-2xl bg-amber-600 px-5 text-sm font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-amber-700"
+                  >
+                    <Download size={15} /> Download Anyway
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
