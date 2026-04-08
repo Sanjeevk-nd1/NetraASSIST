@@ -18,5 +18,14 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          markdown: ['react-markdown'],
+          msal: ['@azure/msal-browser', '@azure/msal-react'],
+        },
+      },
+    },
   },
 });
