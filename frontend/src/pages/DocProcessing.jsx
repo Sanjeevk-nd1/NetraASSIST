@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Upload, FileSpreadsheet, Play, Download, CheckCircle, CheckCheck, Edit3, X,
   ExternalLink, Loader2, Trash2, Info, ChevronDown, ChevronUp, Eye, Save,
-  Clock, RotateCcw, Square, AlertTriangle, Filter
+  Clock, RotateCcw, Square
 } from 'lucide-react';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
@@ -497,7 +497,6 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
   const [regeneratingIds, setRegeneratingIds] = useState(new Set());
   const [expandedSources, setExpandedSources] = useState({});
   const [statusFilter, setStatusFilter] = useState('all');
-  const [showDownloadWarning, setShowDownloadWarning] = useState(false);
 
   const answeredCount = job.questions?.filter((q) => ['answered', 'accepted'].includes(q.status)).length || 0;
   const acceptedCount = job.questions?.filter((q) => q.status === 'accepted').length || 0;
@@ -506,7 +505,6 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
   const errorCount = job.questions?.filter((q) => q.status === 'error').length || 0;
   const totalQuestions = job.questions?.length || 0;
   const unreviewedCount = totalQuestions - acceptedCount;
-  const reviewProgress = totalQuestions > 0 ? Math.round((acceptedCount / totalQuestions) * 100) : 0;
   const progress = totalQuestions > 0 ? Math.round((job.processed_count / totalQuestions) * 100) : 0;
   const canStart = ['uploaded', 'failed', 'canceled'].includes(job.status);
   const canStop = ['processing', 'canceling'].includes(job.status);
@@ -523,7 +521,9 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
 
   const handleDownloadClick = () => {
     if (unreviewedCount > 0) {
-      setShowDownloadWarning(true);
+      if (window.confirm(`${unreviewedCount} of ${totalQuestions} responses are unreviewed. Download anyway?`)) {
+        onDownload();
+      }
     } else {
       onDownload();
     }
@@ -630,21 +630,6 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
                 </div>
                 <div className="h-2.5 w-full rounded-full bg-border-light">
                   <div className={`h-2.5 rounded-full transition-all duration-500 ${['processing', 'canceling'].includes(job.status) ? 'bg-brand progress-shimmer' : job.status === 'canceled' ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }} />
-                </div>
-              </div>
-            )}
-
-            {answeredCount > 0 && (
-              <div className="mt-4">
-                <div className="mb-2 flex items-center justify-between text-xs font-semibold text-muted-light">
-                  <span>Review Progress</span>
-                  <span className={acceptedCount === totalQuestions ? 'text-emerald-600' : ''}>
-                    {acceptedCount} / {totalQuestions} accepted ({reviewProgress}%)
-                    {unreviewedCount > 0 && <span className="ml-2 text-amber-600">· {unreviewedCount} unreviewed</span>}
-                  </span>
-                </div>
-                <div className="h-2.5 w-full rounded-full bg-border-light">
-                  <div className="h-2.5 rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${reviewProgress}%` }} />
                 </div>
               </div>
             )}
@@ -824,39 +809,6 @@ function JobDetailView({ job, polling, onStart, onStop, onAcceptAll, onDownload,
               );
             })}
           </div>
-
-          {/* Download Warning Modal */}
-          {showDownloadWarning && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-up">
-              <div className="mx-4 w-full max-w-md rounded-3xl border border-border-light bg-surface-card p-8 shadow-2xl">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-amber-500/10">
-                    <AlertTriangle size={24} className="text-amber-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-extrabold text-dark">Unreviewed Responses</h3>
-                    <p className="mt-2 text-sm text-muted">
-                      <span className="font-bold text-amber-600">{unreviewedCount}</span> of {totalQuestions} responses have not been accepted yet. Downloaded results will include unreviewed answers.
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-6 flex items-center justify-end gap-3">
-                  <button
-                    onClick={() => setShowDownloadWarning(false)}
-                    className="button-secondary flex h-11 items-center gap-2 rounded-2xl px-5 text-sm hover:bg-surface-light"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => { setShowDownloadWarning(false); onDownload(); }}
-                    className="flex h-11 items-center gap-2 rounded-2xl bg-amber-600 px-5 text-sm font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-amber-700"
-                  >
-                    <Download size={15} /> Download Anyway
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
