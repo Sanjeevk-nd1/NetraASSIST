@@ -89,12 +89,17 @@ def _is_header_row(first_row_values):
 
 
 def _match_question_column(columns):
-    """Return the column name that matches question patterns, or None."""
-    for col in columns:
+    """Return the column name that matches question patterns, or None.
+    Only considers reasonably short cells — a real column header is rarely
+    longer than ~40 chars, and long paragraphs that happen to contain the
+    word 'question' should not be treated as headers.
+    """
+    short_cols = [c for c in columns if len(str(c)) <= 40]
+    for col in short_cols:
         normalized = re.sub(r'\s+', ' ', str(col)).strip().lower()
         if normalized in _QUESTION_EXACT:
             return col
-    for col in columns:
+    for col in short_cols:
         normalized = str(col).strip().lower()
         if any(t in normalized for t in _QUESTION_SUBSTR):
             return col
@@ -120,62 +125,165 @@ def _is_valid_question(text):
     return True
 
 
+def _dedupe_columns(cols):
+    """Ensure column names are unique by appending suffixes to duplicates."""
+    seen = {}
+    out = []
+    for c in cols:
+        if c not in seen:
+            seen[c] = 0
+            out.append(c)
+        else:
+            seen[c] += 1
+            out.append(f"{c}.{seen[c]}")
+    return out
+
+
+def _row_looks_like_header(row_vals):
+    """A row 'looks like a header' if it has ≥2 short, mostly-textual cells.
+    Excludes long sentences (data rows) and rows that are mostly numbers.
+    Threshold ≤40 chars per cell matches typical column-header lengths
+    (most are 5–25 chars; longer names like 'Follow-up  % Complete' are 22)."""
+    vals = [str(v).strip() for v in row_vals if pd.notna(v) and str(v).strip()]
+    if len(vals) < 2:
+        return False
+    if not all(len(v) <= 40 for v in vals):
+        return False
+    text_cells = sum(1 for v in vals if re.search(r'[A-Za-z]', v))
+    # At least max(2, half-of-cells) must contain letters. Filters numeric
+    # rows like ['Application Security', 13, 13, 0, 0, 0] (only 1 text cell).
+    return text_cells >= max(2, len(vals) // 2)
+
+
+def _find_header_row(raw_df, max_scan=15):
+    """Find the first row that (a) looks like a header AND (b) contains a
+    Question-like column. Returns the row index or None.
+
+    The 'looks like a header' check is critical: without it, a data row
+    that happens to contain the word 'question' (e.g. an index sheet row
+    'General Questions | 0 | 11') would be mistaken for a header.
+    """
+    scan_limit = min(max_scan, raw_df.shape[0])
+    for i in range(scan_limit):
+        row = raw_df.iloc[i].tolist()
+        if not _row_looks_like_header(row):
+            continue
+        row_vals = [str(v).strip() if pd.notna(v) else "" for v in row]
+        if _match_question_column(row_vals) is not None:
+            return i
+    return None
+
+
+def _find_likely_header_row(raw_df, max_scan=15):
+    """Find a row that *looks* like a header but doesn't necessarily contain
+    a Question column. Used to produce a clear error message ('found
+    columns: [...]') when a data sheet is missing its Question column."""
+    scan_limit = min(max_scan, raw_df.shape[0])
+    for i in range(scan_limit):
+        if _row_looks_like_header(raw_df.iloc[i].tolist()):
+            return i
+    return None
+
+
+def _sheet_has_substantial_data(raw_df, min_cell_len=50, min_rows=1):
+    """True if the sheet contains at least `min_rows` rows where some cell
+    has ≥ `min_cell_len` characters of letter-bearing text.
+
+    Used to distinguish 'real data sheet missing a Question column' (→ error)
+    from 'utility / summary / index sheet' (→ skip silently).
+    Threshold 50 chars matches typical real questionnaire content while
+    excluding short index labels like 'Application Security' (20 chars).
+    """
+    long_rows = 0
+    for i in range(min(200, raw_df.shape[0])):
+        for v in raw_df.iloc[i].tolist():
+            if pd.notna(v):
+                s = str(v).strip()
+                if len(s) >= min_cell_len and re.search(r'[A-Za-z]', s):
+                    long_rows += 1
+                    break
+        if long_rows >= min_rows:
+            return True
+    return False
+
+
 def _parse_sheet(sheet_name, raw_df):
     """Parse one sheet. Returns (questions_list, display_col_name, error_msg).
-    raw_df is read with header=None so we can detect headerless sheets."""
+    raw_df is read with header=None so we can detect headerless sheets.
+
+    Decision tree:
+      1. Header row with a Question column found → parse rows below it.
+      2. Likely header row found but no Question column:
+           - If real data follows (long-text cells) → ERROR (user should rename column).
+           - Otherwise → skip silently (Summary / index / instructions sheet).
+      3. No header detectable but sheet contains long-text data → headerless
+         fallback (pick the column with the longest average text).
+      4. Otherwise → skip silently (empty / metadata-only sheet).
+    """
     if raw_df.empty or raw_df.shape[0] < 1 or raw_df.shape[1] < 1:
-        return [], None, None  # empty sheet — skip silently
+        return [], None, None
 
-    has_header = _is_header_row(raw_df.iloc[0].tolist())
+    # ── 1. Header row containing a Question column ─────────────────────
+    q_idx = _find_header_row(raw_df)
+    if q_idx is not None:
+        header_row = raw_df.iloc[q_idx]
+        header_cells = _dedupe_columns([
+            str(v).strip() if pd.notna(v) and str(v).strip() else f"Unnamed_{i}"
+            for i, v in enumerate(header_row)
+        ])
+        question_col = _match_question_column(header_cells)
+        df = raw_df.iloc[q_idx + 1:].reset_index(drop=True)
+        df.columns = header_cells
+        # _find_header_row already confirmed a question column exists.
+        # Defensive guard for the rare case where dedupe rewrites the matched name.
+        if question_col is None:
+            return [], None, None
+        questions = df[question_col].dropna().astype(str).tolist()
+        questions = [q.strip() for q in questions if _is_valid_question(q)]
+        if not questions:
+            return [], str(question_col), f"Sheet \"{sheet_name}\": No valid questions found."
+        return questions, str(question_col), None
 
-    if has_header:
-        df = raw_df.copy()
-        df.columns = [str(v).strip() if pd.notna(v) else f"Unnamed_{i}" for i, v in enumerate(raw_df.iloc[0])]
-        df = df.iloc[1:].reset_index(drop=True)
-    else:
-        df = raw_df.copy()
-        df.columns = [f"Column_{i+1}" for i in range(df.shape[1])]
-
-    # Filter out empty / unnamed / numeric-only columns
-    text_cols = []
-    for col in df.columns:
-        if str(col).lower().startswith("unnamed") or str(col).strip() == "":
-            continue
-        text_cols.append(col)
-    if not text_cols:
-        # Fall back to all columns if all were unnamed
-        text_cols = list(df.columns)
-
-    question_col = _match_question_column(text_cols) if has_header else None
-
-    if question_col is None and has_header:
-        col_names = [str(c) for c in text_cols if not str(c).lower().startswith("unnamed")]
+    # ── 2. Likely header without a Question column ─────────────────────
+    h_idx = _find_likely_header_row(raw_df)
+    if h_idx is not None:
+        data_below = raw_df.iloc[h_idx + 1:]
+        if data_below.empty or not _sheet_has_substantial_data(data_below):
+            # Summary / index / utility sheet — skip silently.
+            return [], None, None
+        # Real data with a non-Question header → tell the user.
+        header_row = raw_df.iloc[h_idx]
+        col_names = [
+            str(v).strip() for v in header_row.tolist()
+            if pd.notna(v) and str(v).strip() and not str(v).strip().lower().startswith("unnamed")
+        ]
         return [], None, (
             f"Sheet \"{sheet_name}\": Could not find a question column. "
             f"Found columns: [{', '.join(col_names)}]. "
             f"Please rename the column containing questions to \"Question\"."
         )
 
-    if question_col is None:
-        # Headerless: pick the column with longest average text
-        if len(text_cols) == 1:
-            question_col = text_cols[0]
-        else:
-            best_col, best_len = text_cols[0], 0
-            for col in text_cols:
-                avg = df[col].dropna().astype(str).str.len().mean()
-                if avg > best_len:
-                    best_len, best_col = avg, col
-            question_col = best_col
+    # ── 3. No header anywhere, but maybe headerless questions present ──
+    if not _sheet_has_substantial_data(raw_df):
+        return [], None, None  # nothing useful in this sheet
 
+    df = raw_df.copy()
+    df.columns = [f"Column_{i+1}" for i in range(df.shape[1])]
+    text_cols = list(df.columns)
+    if len(text_cols) == 1:
+        question_col = text_cols[0]
+    else:
+        best_col, best_len = text_cols[0], 0
+        for col in text_cols:
+            avg = df[col].dropna().astype(str).str.len().mean()
+            if pd.notna(avg) and avg > best_len:
+                best_len, best_col = avg, col
+        question_col = best_col
     questions = df[question_col].dropna().astype(str).tolist()
     questions = [q.strip() for q in questions if _is_valid_question(q)]
-
     if not questions:
         return [], str(question_col), f"Sheet \"{sheet_name}\": No valid questions found."
-
-    display_col = str(question_col) if has_header else "(no header row — auto-detected)"
-    return questions, display_col, None
+    return questions, "(no header row — auto-detected)", None
 
 
 @docprocess_bp.route("/api/docprocess/upload", methods=["POST"])
