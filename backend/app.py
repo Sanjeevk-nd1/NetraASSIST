@@ -46,10 +46,25 @@ def create_app():
 
     @app.after_request
     def set_security_headers(response):
+        # OWASP baseline hardening
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['X-XSS-Protection'] = '1; mode=block'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        response.headers['Permissions-Policy'] = (
+            "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
+            "magnetometer=(), microphone=(), payment=(), usb=()"
+        )
+        response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+        response.headers['Cross-Origin-Resource-Policy'] = 'same-origin'
+        response.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains'
+
+        # VAPT finding #3: suppress server/tech-stack fingerprinting.
+        # Overwrite the `Server` banner (Werkzeug/Gunicorn announce themselves)
+        # and strip any X-Powered-By / Via the proxy might add.
+        response.headers['Server'] = 'NetraASSIST'
+        for h in ('X-Powered-By', 'Via', 'X-AspNet-Version', 'X-AspNetMvc-Version'):
+            response.headers.pop(h, None)
         return response
 
     @app.before_request

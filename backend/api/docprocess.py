@@ -676,7 +676,7 @@ def regenerate_answer(question_id):
             return jsonify({"error": "Question not found"}), 404
 
         started = time.perf_counter()
-        result = answer_question_with_sources(row["question"], use_cache=False)
+        result = answer_question_with_sources(row["question"], use_cache=False, user_id=user_id)
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         db.execute(text("""

@@ -149,7 +149,7 @@ def chat():
         conversation_history = [{"role": r[0], "content": r[1]} for r in history_rows[:-1]]
 
         try:
-            answer = chat_answer_question(question, conversation_history)
+            answer = chat_answer_question(question, conversation_history, user_id=user_id)
             if not has_indexed_documents():
                 answer = "**⚠️ No knowledge base documents are indexed.** Responses are based on general AI knowledge only, not your organization's data. Please configure SharePoint sync in the Admin panel.\n\n---\n\n" + answer
         except Exception as e:

@@ -38,9 +38,10 @@ def process_question(self, question_id, batch_id):
     """Process a single question: call RAG pipeline, store result."""
     db = SessionLocal()
     try:
-        # Check if job was canceled first (cheap check)
+        # Check if job was canceled first (cheap check). Also pull user_id so
+        # any guardrail trips during processing are attributed correctly.
         job = db.execute(text("""
-            SELECT cancel_requested FROM batch_jobs WHERE id = :batch_id
+            SELECT cancel_requested, user_id FROM batch_jobs WHERE id = :batch_id
         """), {"batch_id": batch_id}).mappings().fetchone()
 
         if not job:
@@ -68,7 +69,10 @@ def process_question(self, question_id, batch_id):
 
         # Call the RAG pipeline (use_cache=True: skip LLM if same question was answered before)
         started = time.perf_counter()
-        result = answer_question_with_sources(claimed["question"], use_cache=True)
+        result = answer_question_with_sources(
+            claimed["question"], use_cache=True,
+            user_id=str(job["user_id"]) if job.get("user_id") else None,
+        )
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         # Re-check cancel AFTER the LLM call — if canceled mid-flight, honor it
